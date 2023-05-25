@@ -1,10 +1,16 @@
 import sys
 mitsuba_path = "C:\\Users\\holmes969\\mitsuba3\\build\\Release\\python"
-sys.path.insert(0, mitsuba_path)
-import mitsuba as mi
-import drjit as dr
+psdr_path = "C:\\Users\\holmes969\\mitsuba3\\psdr\\integrator"
 
-mi.set_variant('llvm_ad_rgb')
+sys.path.insert(0, mitsuba_path)
+sys.path.insert(0, psdr_path)
+
+import mitsuba as mi
+mi.set_variant('cuda_ad_rgb')
+
+import drjit as dr
+import psdr_basic
+
 # Load scene
 scene_path = '../scenes/cbox_bunny.xml'
 scene = mi.load_file(scene_path, integrator='psdr_basic')

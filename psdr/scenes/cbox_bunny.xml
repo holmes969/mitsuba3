@@ -1,0 +1,84 @@
+<?xml version='1.0' encoding='utf-8'?>
+
+<scene version="0.5.0">
+    <default name="max_depth" value="3"/>
+    <default name="integrator" value="path"/>
+
+    <integrator type='$integrator'>
+        <integer name="max_depth" value="$max_depth"/>
+    </integrator>
+
+	<sensor type="perspective">
+		<float name="fov" value="13"/>
+		<transform name="toWorld">
+			<lookat target="0, 124.965, 999.001" origin="0, 125, 1000" up="0, 0.999388, -0.0349786"/>
+		</transform>
+
+		<sampler type="independent">
+			<integer name="sampleCount" value="2048"/>
+		</sampler>
+
+		<film type="hdrfilm">
+			<boolean name="banner" value="false"/>
+			<integer name="height" value="256"/>
+			<integer name="width" value="256"/>
+			<rfilter type="box"/>
+		</film>
+	</sensor>
+
+	<bsdf type="diffuse" id="white">
+		<rgb name="reflectance" value="0.95, 0.95, 0.95"/>
+	</bsdf>
+
+	<bsdf type="diffuse" id="bunny">
+		<rgb name="reflectance" value="0.9, 0.2, 0.2"/>
+	</bsdf>
+
+	<shape type="obj" id='emitter'>
+		<string name="filename" value="meshes/emitter.obj"/>
+		<transform name="toWorld">
+			<scale x="0.5" z="0.5"/>
+			<translate x='50' y="190.0"/>
+		</transform>
+		<ref id="white"/>
+		<emitter type="area">
+			<rgb name="radiance" value="40.0, 40.0, 40.0"/>
+		</emitter>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="meshes/bunny.obj"/>
+		<transform name="toWorld">
+			<scale x="35.0" y="35.0" z="35.0"/>
+			<rotate z="1" angle="-30"/>
+			<translate x="15" y="30" z="20"/>
+		</transform>
+		<ref id="bunny"/>
+		<boolean name='faceNormals' value='true'/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="meshes/floor.obj"/>
+		<ref id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="meshes/ceil.obj"/>
+		<ref id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="meshes/wall_back.obj"/>
+		<ref id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="meshes/wall_left.obj"/>
+		<ref id="white"/>
+	</shape>
+
+	<shape type="obj">
+		<string name="filename" value="meshes/wall_right.obj"/>
+		<ref id="white"/>
+	</shape>
+</scene>
