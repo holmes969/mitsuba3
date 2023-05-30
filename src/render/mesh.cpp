@@ -547,6 +547,8 @@ Mesh<Float, Spectrum>::sample_position(Float time, const Point2f &sample_, Mask 
     ps.time  = time;
     ps.pdf   = m_area_pmf.normalization();
     ps.delta = false;
+    ps.j     = dr::norm(dr::cross(e0, e1)) * 0.5f;
+    ps.j     = ps.j / dr::detach(ps.j);
 
     if (has_vertex_texcoords()) {
         Point2f uv0 = vertex_texcoord(fi[0], active),
@@ -721,8 +723,11 @@ Mesh<Float, Spectrum>::compute_surface_interaction(const Ray3f &ray,
 
     si.t = dr::select(active, t, dr::Infinity<Float>);
 
-    // Face normal
-    si.n = dr::normalize(dr::cross(dp0, dp1));
+    // Face normal & path-space jacobian
+    Vector3f tmp = dr::cross(dp0, dp1);
+    si.j = dr::norm(tmp) * 0.5f;            // area of mesh triangle
+    si.j = si.j / dr::detach(si.j);
+    si.n = dr::normalize(tmp);
 
     // Texture coordinates (if available)
     si.uv = Point2f(b1, b2);

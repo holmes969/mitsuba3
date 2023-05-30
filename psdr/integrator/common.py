@@ -155,10 +155,10 @@ class PSIntegrator(mi.CppADIntegrator):
                 #   Σ (fi Li det)
                 #  ---------------
                 #   Σ (fi det)
-                ADIntegrator._splat_to_block(
+                PSIntegrator._splat_to_block(
                     block, film, pos,
-                    value=L * weight * det,
-                    weight=det,
+                    value=L * weight,
+                    weight=1.0,
                     alpha=dr.select(valid, mi.Float(1), mi.Float(0)),
                     wavelengths=ray.wavelengths
                 )

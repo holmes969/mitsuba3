@@ -269,6 +269,7 @@ Scene<Float, Spectrum>::sample_emitter_direction(const Interaction3f &ref, const
     bool vcall_inline = true;
     if constexpr (dr::is_jit_v<Float>)
          vcall_inline = jit_flag(JitFlag::VCallInline);
+    
 
     size_t emitter_count = m_emitters.size();
     if (emitter_count > 1 || (emitter_count == 1 && !vcall_inline)) {

@@ -233,6 +233,13 @@ struct SurfaceInteraction : Interaction<Float_, Spectrum_> {
      */
     Float boundary_test;
 
+    /**
+     * The Jacobian term j captures the change of variable from material point
+     * to spatial point. In practice, this Jacobian equals to constant 1 but with
+     * non-zero derivatives.
+     */
+    Float j = 1.0;
+
     //! @}
     // =============================================================
 
@@ -503,7 +510,8 @@ struct SurfaceInteraction : Interaction<Float_, Spectrum_> {
 
     DRJIT_STRUCT(SurfaceInteraction, t, time, wavelengths, p, n, shape, uv,
                  sh_frame, dp_du, dp_dv, dn_du, dn_dv, duv_dx,
-                 duv_dy, wi, prim_index, instance, boundary_test)
+                 duv_dy, wi, prim_index, instance, boundary_test,
+                 j)
 };
 
 // -----------------------------------------------------------------------------

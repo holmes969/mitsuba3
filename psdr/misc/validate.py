@@ -1,6 +1,6 @@
 import sys
-mitsuba_path = "C:\\Users\\holmes969\\mitsuba3\\build\\Release\\python"
-psdr_path = "C:\\Users\\holmes969\\mitsuba3\\psdr\\integrator"
+mitsuba_path = "D:\\Cheng\\mitsuba3\\build\\Release\\python"
+psdr_path = "D:\\Cheng\\mitsuba3\\psdr\\integrator"
 
 sys.path.insert(0, mitsuba_path)
 sys.path.insert(0, psdr_path)
@@ -27,7 +27,7 @@ params.update()
 # Render and record the computational graph
 image = mi.render(scene, params, spp=512)
 mi.util.write_bitmap("../results/forward.exr", image)
-exit()
+# exit()
 # Forward-propagate gradients through the computation graph
 dr.forward(var, dr.ADFlag.ClearEdges)
 # Fetch the image gradient values

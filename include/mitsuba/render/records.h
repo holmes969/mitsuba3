@@ -59,6 +59,9 @@ struct PositionSample {
     /// Set if the sample was drawn from a degenerate (Dirac delta) distribution
     Mask delta;
 
+    /// Jacobian for path-space
+    Float j = 1.0;
+
     //! @}
     // =============================================================
 
@@ -74,7 +77,7 @@ struct PositionSample {
      * instance in path tracing with multiple importance sampling.
      */
     PositionSample(const SurfaceInteraction3f &si)
-        : p(si.p), n(si.sh_frame.n), uv(si.uv), time(si.time), pdf(0.f),
+        : p(si.p), n(si.sh_frame.n), uv(si.uv), time(si.time), pdf(0.f), j(si.j),
           delta(false) { }
 
     /// Basic field constructor
@@ -85,7 +88,7 @@ struct PositionSample {
     //! @}
     // =============================================================
 
-    DRJIT_STRUCT(PositionSample, p, n, uv, time, pdf, delta)
+    DRJIT_STRUCT(PositionSample, p, n, uv, time, pdf, delta, j)
 };
 
 // -----------------------------------------------------------------------------
@@ -191,7 +194,7 @@ struct DirectionSample : public PositionSample<Float_, Spectrum_> {
     //! @}
     // =============================================================
 
-    DRJIT_STRUCT(DirectionSample, p, n, uv, time, pdf, delta, d, dist, emitter)
+    DRJIT_STRUCT(DirectionSample, p, n, uv, time, pdf, delta, d, dist, emitter, j)
 };
 
 // -----------------------------------------------------------------------------
