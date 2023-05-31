@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 
 <scene version="0.5.0">
-    <default name="max_depth" value="3"/>
+    <default name="max_depth" value="2"/>
     <default name="integrator" value="path"/>
 
     <integrator type='$integrator'>
@@ -9,7 +9,7 @@
     </integrator>
 
 	<sensor type="perspective">
-		<float name="fov" value="13"/>
+		<float name="fov" value="14"/>
 		<transform name="toWorld">
 			<lookat target="0, 124.965, 999.001" origin="0, 125, 1000" up="0, 0.999388, -0.0349786"/>
 		</transform>
@@ -46,7 +46,7 @@
 		</emitter>
 	</shape>
 
-	<shape type="obj">
+	<shape type="obj" id='bunny_shape'>
 		<string name="filename" value="meshes/bunny.obj"/>
 		<transform name="toWorld">
 			<scale x="35.0" y="35.0" z="35.0"/>
