@@ -11,7 +11,7 @@ import psdr_basic
 from time import time
 
 spp = 64
-max_depth = 5
+max_depth = 2
 scene_path = '../scenes/cbox_bunny.xml'
 scene = mi.load_file(scene_path, integrator='psdr_basic', max_depth=max_depth)
 # Set parameter to be differentiated
@@ -79,6 +79,6 @@ def backward_ad_benchmark():
     avg_time_elapsed /= num_iters
     print(f"[Benchmark] backward ad (spp = {spp}) takes {avg_time_elapsed} sec")
 
-# primal_benchmark()
-# forward_ad_benchmark()
+primal_benchmark()
+forward_ad_benchmark()
 backward_ad_benchmark()

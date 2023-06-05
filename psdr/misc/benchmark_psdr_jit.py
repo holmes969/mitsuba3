@@ -10,7 +10,7 @@ from time import time
 import cv2
 
 spp = 64
-max_depth = 5
+max_depth = 2
 mitsuba_path = os.path.abspath("../../")
 scene_path = os.path.join(mitsuba_path, 'psdr/scenes')
 result_path = os.path.join(mitsuba_path, 'psdr/results')
@@ -30,7 +30,7 @@ sc.param_map["Mesh[0]"].set_transform(Matrix4fD([[1.,0.,0.,var],
 sc.configure([0])
 
 integrator = psdr.PathTracer(max_depth - 1)
-num_iters = 100
+num_iters = 1
 def primal_benchmark():
     avg_time_elapsed = 0.0
     for i in range(num_iters):
@@ -52,7 +52,7 @@ def forward_ad_benchmark():
         t0 = time()
         image = integrator.renderD(sc, 0)
         # Forward-propagate gradients through the computation graph
-        dr.forward(var, dr.ADFlag.ClearEdges)
+        dr.forward(var)
         # Fetch the image gradient values
         grad_image = dr.grad(image)
         dr.eval(grad_image)
@@ -83,6 +83,6 @@ def backward_ad_benchmark():
     avg_time_elapsed /= num_iters
     print(f"[Benchmark] backward ad (spp = {spp}) takes {avg_time_elapsed} sec")
 
-# primal_benchmark()
-# forward_ad_benchmark()
+primal_benchmark()
+forward_ad_benchmark()
 backward_ad_benchmark()
