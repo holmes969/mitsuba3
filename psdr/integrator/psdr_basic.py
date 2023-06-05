@@ -18,94 +18,100 @@ class PathSpaceBasicIntegrator(common.PSIntegrator):
                active: mi.Bool,
                **kwargs # Absorbs unused arguments
     ) -> Tuple[mi.Spectrum, mi.Bool, mi.Spectrum]:
-        
         # Standard BSDF evaluation context for path tracing
         bsdf_ctx = mi.BSDFContext()
 
         # --------------------- Configure loop state ----------------------
-        # Copy input arguments to avoid mutating the caller's state
+        ray = mi.Ray3f(ray)
         β = mi.Spectrum(1)              # Path throughput weight
         L = mi.Spectrum(0)              # Radiance accumulator
         depth = mi.UInt32(0)            # Depth of current vertex
         active = mi.Bool(active)        # Active SIMD lanes
 
+        # --------------------- Variables caching information from the previous bounce ----------------------
+        prev_si = dr.zeros(mi.SurfaceInteraction3f)
+        prev_bsdf_pdf = mi.Float(1.0)
+        prev_bsdf_delta = mi.Bool(True)
+
         # Record the following loop in its entirety
         loop = mi.Loop(name="Path-Space Diff. Rendering (%s)" % mode.name,
-                       state=lambda: (sampler, ray, depth, L, β, active))
+                        state=lambda: (sampler, ray, depth, L, β, active,
+                                        prev_si, prev_bsdf_pdf, prev_bsdf_delta))
+        loop.set_max_iterations(self.max_depth)
         while loop(active):
             # Enable RayFlags.FollowShape to avoid diff. ray-surface intersect
-            si = scene.ray_intersect(ray, mi.RayFlags.All | mi.RayFlags.FollowShape, active)
+            si = scene.ray_intersect(ray,
+                                        ray_flags=mi.RayFlags.All | mi.RayFlags.FollowShape,
+                                        coherent=dr.eq(depth, 0))
             # Overwrite wi using path-space formulation
             active_next = si.is_valid()
-            wi = dr.normalize(ray.o - si.p)
+            dir = ray.o - si.p
+            wi = dr.normalize(dir)
             si.wi = dr.select(active_next, si.to_local(wi), si.wi)
-            # Overwrite the primary-ray throughput using path-space formulation
-            is_primary_ray = dr.eq(depth, 0)
-            overwrite_imp = is_primary_ray & active_next
-            ds, cam_imp = sensor.sample_direction(si, mi.Point2f(), overwrite_imp)
-            contrb = cam_imp * dr.abs(dr.dot(wi, si.n))
-            contrb = dr.select(contrb > 0.0, contrb / dr.detach(contrb), 0.0)           # why is this needed?
-            β = β * dr.select(overwrite_imp, si.j * contrb, 1.0)
-            # Direct emission (only for primary ray)
-            Le = si.emitter(scene).eval(si, is_primary_ray)
-            L += Le * β
 
+            β_mult = mi.Float(0.0)
+            β_pdf = mi.Float(1.0)
+            # Primary ray: re-write sensor importance
+            valid_primary_its = active_next & dr.eq(depth, 0)
+            _, cam_imp = sensor.sample_direction(si, mi.Point2f(), valid_primary_its)
+            cam_cos_imp = cam_imp * dr.abs(dr.dot(wi, si.n))
+            valid_primary_its &= cam_cos_imp > 0.0              # to remove nan values (why needed?)
+            β_mult = dr.select(valid_primary_its, si.j * cam_cos_imp, β_mult)
+            β_pdf = dr.select(valid_primary_its, dr.detach(cam_cos_imp), β_pdf)
+            # Secondary ray: update based on 3-point BSDF
+            valid_sec_its = active_next & dr.neq(depth, 0)
+            prev_bsdf = prev_si.bsdf()
+            prev_bsdf_val = prev_bsdf.eval(bsdf_ctx,
+                                            prev_si,
+                                            prev_si.to_local(-wi),
+                                            active_next)
+            geo_term = dr.abs(si.wi.z) / dr.squared_norm(dir)
+            β_mult = dr.select(valid_sec_its, si.j * prev_bsdf_val * geo_term, β_mult)
+            β_pdf = dr.select(valid_sec_its, prev_bsdf_pdf * dr.detach(geo_term), β_pdf)
+            # Update path throughput based on path-space formulation
+            β *= β_mult / β_pdf
 
-            # # Should we continue tracing to reach one more vertex?
-            # active_next = (depth + 1 < self.max_depth) & active_next
+            # ---------------------- Direct emission ----------------------
+            # Compute MIS weight for emitter sample from previous bounce
+            ds = mi.DirectionSample3f(scene, si=si, ref=prev_si)
+            mis = common.mis_weight(
+                prev_bsdf_pdf,
+                scene.pdf_emitter_direction(prev_si, ds, ~prev_bsdf_delta)
+            )
+            L += β * mis * ds.emitter.eval(si)
 
-            # # Get the BSDF. Potentially computes texture-space differentials.
-            # bsdf = si.bsdf(ray)
+            # ---------------------- Emitter sampling ----------------------
+            # Get the BSDF, potentially computes texture-space differentials
+            bsdf = si.bsdf(ray)
+            # Should we continue tracing to reach one more vertex?
+            active_next = active_next & (depth + 1 < self.max_depth)
+            # Is emitter sampling even possible on the current vertex?
+            active_em = active_next & mi.has_flag(bsdf.flags(), mi.BSDFFlags.Smooth)
+            # If so, randomly sample an emitter without derivative tracking.
+            ds, em_weight = scene.sample_emitter_direction(si, sampler.next_2d(), True, active_em)
+            active_em &= dr.neq(ds.pdf, 0.0)
+            wo = si.to_local(ds.d)
+            bsdf_value_em, bsdf_pdf_em = bsdf.eval_pdf(bsdf_ctx, si, wo, active_em)
+            mis_em = dr.select(ds.delta, 1, common.mis_weight(ds.pdf, bsdf_pdf_em))
+            L += mis_em * bsdf_value_em * em_weight * β
 
-            # # ---------------------- Emitter sampling ----------------------
-            # # Is emitter sampling even possible on the current vertex?
-            # active_em = active_next & mi.has_flag(bsdf.flags(), mi.BSDFFlags.Smooth)
-            # ds, weight_em = scene.sample_emitter_direction(si, sampler.next_2d(), True, active_em)
-            # active_em &= dr.neq(ds.pdf, 0.0)
-            # if dr.any(active_em):
-            #     wo = si.to_local(ds.d)
-            #     bsdf_value_em, bsdf_pdf_em = bsdf.eval_pdf(bsdf_ctx, si, wo, active_em)
-            #     L += bsdf_value_em * weight_em * β
+            # ------------------ Detached BSDF sampling -------------------
+            with dr.suspend_grad():
+                bsdf_sample, _ = bsdf.sample(bsdf_ctx, si,
+                                                sampler.next_1d(),
+                                                sampler.next_2d(),
+                                                active_next)
             
 
-
+            # ---- Update loop variables based on current interaction -----
+            ray = si.spawn_ray(dr.detach(si.to_world(bsdf_sample.wo)))
+            prev_si = si
+            prev_bsdf_pdf = bsdf_sample.pdf
+            prev_bsdf_delta = mi.has_flag(bsdf_sample.sampled_type, mi.BSDFFlags.Delta)
+            
+            depth[si.is_valid()] += 1
             active = active_next
-            depth[active] += 1
-            
 
-
-        #     # path throughput
-        #     ds, cam_imp = sensor.sample_direction(si, mi.Point2f(), active_next)
-        #     contrb = cam_imp * dr.abs(dr.dot(wi, si.n))
-        #     contrb = dr.select(contrb > 0.0, contrb / dr.detach(contrb), 0.0)       # why is this needed?
-        #     β = β * dr.select(active_next, si.j * contrb, 0.0)
-
-        #     # Is emitter sampling even possible on the current vertex?
-        #     active_em = active_next & mi.has_flag(bsdf.flags(), mi.BSDFFlags.Smooth)
-
-        #     active = active_next
-
-
-        # # Get the BSDF. Potentially computes texture-space differentials.
-        # bsdf = si.bsdf(ray)
-        # # Overwrite wi using path-space formulation
-        # wi = dr.normalize(ray.o - si.p)
-        # si.wi = dr.select(active_next, si.to_local(wi), si.wi)
-        # # path throughput
-        # ds, cam_imp = sensor.sample_direction(si, mi.Point2f(), active_next)
-        # contrb = cam_imp * dr.abs(dr.dot(wi, si.n))
-        # contrb = dr.select(contrb > 0.0, contrb / dr.detach(contrb), 0.0)       # why is this needed?
-        # β = β * dr.select(active_next, si.j * contrb, 0.0)
-        # # Differentiable evaluation of intersected emitter / envmap
-        # Le = si.emitter(scene).eval(si)
-        # L += Le * β
-        # # emitter sample
-        # active_em = active_next & mi.has_flag(bsdf.flags(), mi.BSDFFlags.Smooth)
-        # ds, weight_em = scene.sample_emitter_direction(si, sampler.next_2d(), True, active_em)
-        # active_em &= dr.neq(ds.pdf, 0.0)
-        # wo = si.to_local(ds.d)
-        # bsdf_value_em, bsdf_pdf_em = bsdf.eval_pdf(bsdf_ctx, si, wo, active_em)
-        # L += bsdf_value_em * weight_em * β
         return L, active, None
 
 mi.register_integrator("psdr_basic", lambda props: PathSpaceBasicIntegrator(props))

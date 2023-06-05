@@ -137,14 +137,15 @@ class PSIntegrator(mi.CppADIntegrator):
             ray, weight, pos = self.sample_rays(scene, sensor, sampler)
 
             with dr.resume_grad():
-                L, valid, _ = self.sample(
-                    mode=dr.ADMode.Forward,
-                    scene=scene,
-                    sensor=sensor,
-                    sampler=sampler,
-                    ray=ray,
-                    active=mi.Bool(True)
-                )
+                with dr.scoped_set_flag(dr.JitFlag.LoopRecord, False):
+                    L, valid, _ = self.sample(
+                        mode=dr.ADMode.Forward,
+                        scene=scene,
+                        sensor=sensor,
+                        sampler=sampler,
+                        ray=ray,
+                        active=mi.Bool(True)
+                    )
 
                 block = film.create_block()
                 # Only use the coalescing feature when rendering enough samples
@@ -199,14 +200,15 @@ class PSIntegrator(mi.CppADIntegrator):
             ray, weight, pos = self.sample_rays(scene, sensor, sampler)
 
             with dr.resume_grad():
-                L, valid, _ = self.sample(
-                    mode=dr.ADMode.Backward,
-                    scene=scene,
-                    sensor=sensor,
-                    sampler=sampler,
-                    ray=ray,
-                    active=mi.Bool(True)
-                )
+                with dr.scoped_set_flag(dr.JitFlag.LoopRecord, False):
+                    L, valid, _ = self.sample(
+                        mode=dr.ADMode.Backward,
+                        scene=scene,
+                        sensor=sensor,
+                        sampler=sampler,
+                        ray=ray,
+                        active=mi.Bool(True)
+                    )
 
                 # Prepare an ImageBlock as specified by the film
                 block = film.create_block()
@@ -217,8 +219,8 @@ class PSIntegrator(mi.CppADIntegrator):
                 # Accumulate into the image block
                 PSIntegrator._splat_to_block(
                     block, film, pos,
-                    value=L * weight * det,
-                    weight=det,
+                    value=L * weight,
+                    weight=1.0,
                     alpha=dr.select(valid, mi.Float(1), mi.Float(0)),
                     wavelengths=ray.wavelengths
                 )
@@ -489,3 +491,12 @@ class PSIntegrator(mi.CppADIntegrator):
                         'It should be implemented by subclasses that '
                         'specialize the abstract RBIntegrator interface.')
 
+def mis_weight(pdf_a, pdf_b):
+    """
+    Compute the Multiple Importance Sampling (MIS) weight given the densities
+    of two sampling strategies according to the power heuristic.
+    """
+    a2 = dr.sqr(pdf_a)
+    b2 = dr.sqr(pdf_b)
+    w = a2 / (a2 + b2)
+    return dr.detach(dr.select(dr.isfinite(w), w, 0))

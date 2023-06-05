@@ -9,10 +9,13 @@ mi.set_variant('cuda_ad_rgb')
 
 import drjit as dr
 import psdr_basic
+import psdr_direct
 
+
+# dr.set_log_level(3)
 # Load scene
 scene_path = '../scenes/cbox_bunny.xml'
-scene = mi.load_file(scene_path, integrator='psdr_basic')
+scene = mi.load_file(scene_path, integrator='psdr_basic', max_depth='4')
 # Set parameter to be differentiated
 var = mi.Float(0.0)
 dr.enable_grad(var)
@@ -24,10 +27,13 @@ params[key] = dr.ravel(trafo @ initial_vertex_positions)
 # Propagate this change to the scene internal state
 params.update()
 # Render and record the computational graph
-image = mi.render(scene, params, spp=512)
+image = mi.render(scene, params, spp=64)
 mi.util.write_bitmap("../results/forward.exr", image)
+
 # Forward-propagate gradients through the computation graph
 dr.forward(var, dr.ADFlag.ClearEdges)
+
+
 # Fetch the image gradient values
 grad_image = dr.grad(image)
 # write to files
