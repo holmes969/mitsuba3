@@ -1,21 +1,19 @@
 
 import sys
-mitsuba_path = "C:\\Users\\holmes969\\mitsuba3\\"
-# mitsuba_path = "D:\\Cheng\\holmes969\\mitsuba3\\"
-sys.path.insert(0, mitsuba_path + "build\\Release\\python")
-sys.path.insert(0, mitsuba_path + "psdr\\integrator")
-
+import os
+mitsuba_path = os.path.abspath("../..")
+sys.path.insert(0, os.path.join(mitsuba_path, 'build\Release\python'))
+sys.path.insert(0, os.path.join(mitsuba_path, 'psdr\integrator'))
 import mitsuba as mi
 mi.set_variant('cuda_ad_rgb')
-
 import drjit as dr
 import psdr_basic
-import psdr_direct
 from time import time
 
 spp = 64
+max_depth = 4
 scene_path = '../scenes/cbox_bunny.xml'
-scene = mi.load_file(scene_path, integrator='psdr_basic', max_depth='4')
+scene = mi.load_file(scene_path, integrator='psdr_basic', max_depth=max_depth)
 # Set parameter to be differentiated
 var = mi.Float(0.0)
 dr.enable_grad(var)
@@ -30,9 +28,10 @@ params.update()
 def primal_benchmark():
     t0 = time()
     image = mi.render(scene, params, spp=spp)
-    dr.eval(image)
+    # dr.eval(image)
     t1 = time()
     print(f"[Benchmark] primal rendering (spp = {spp}) takes {t1 - t0} sec")
+    mi.util.write_bitmap("../results/primal_mi.exr", image)
 
 def forward_ad_benchmark():
     # Render and record the computational graph
@@ -43,9 +42,10 @@ def forward_ad_benchmark():
     # Fetch the image gradient values
     grad_image = dr.grad(image)
     t1 = time()
+    grad_image[:, :, 1] = 0.0
+    grad_image[:, :, 2] = 0.0
     print(f"[Benchmark] forward ad (spp = {spp}) takes {t1 - t0} sec")
-    mi.util.write_bitmap("../results/derivative.exr", grad_image)
-
+    mi.util.write_bitmap("../results/derivative_mi.exr", grad_image)
 
 def backward_ad_benchmark():
     # Render and record the computational graph
@@ -59,4 +59,4 @@ def backward_ad_benchmark():
 
 primal_benchmark()
 forward_ad_benchmark()
-backward_ad_benchmark()
+# backward_ad_benchmark()
