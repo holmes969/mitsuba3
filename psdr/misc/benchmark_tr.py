@@ -28,7 +28,6 @@ sc.param_map["Shape[0]"].set_transform(Matrix4fD([[1.,0.,0.,P],
                                                     [0.,1.,0.,0.],
                                                     [0.,0.,1.,0.],
                                                     [0.,0.,0.,1.],]))
-sc_manager.configure()
 options = tr.RenderOptions()
 options.spp = spp
 options.spp_batch = spp
@@ -40,9 +39,11 @@ integrator.set_manager(sc_manager)
 img_width = sc.param_map["Sensor[0]"].width
 img_height = sc.param_map["Sensor[0]"].height
 
-num_iters = 100
+num_iters = 1
 def primal_benchmark():
     avg_time_elapsed = 0.0
+    sc_manager.configure()
+    dr.eval()
     for i in range(num_iters):
         t0 = time()
         image = integrator.renderC()
@@ -58,6 +59,8 @@ def primal_benchmark():
 
 def forward_ad_benchmark():
     avg_time_elapsed = 0.0
+    sc_manager.configure()
+    dr.eval()
     for i in range(num_iters): 
         t0 = time()
         image = integrator.renderD(Vector3fC())
@@ -78,6 +81,8 @@ def forward_ad_benchmark():
 def backward_ad_benchmark():
     image_ref = dr.zeros(dr.cuda.ad.Array3f, img_width * img_height)
     avg_time_elapsed = 0.0
+    sc_manager.configure()
+    dr.eval()
     for i in range(num_iters):
         t0 = time()
         image = integrator.renderD(Vector3fC())
@@ -91,6 +96,6 @@ def backward_ad_benchmark():
     avg_time_elapsed /= num_iters
     print(f"[Benchmark] backward ad (spp = {spp}) takes {avg_time_elapsed} sec")
 
-primal_benchmark()
-forward_ad_benchmark()
-backward_ad_benchmark()
+# primal_benchmark()
+# forward_ad_benchmark()
+# backward_ad_benchmark()

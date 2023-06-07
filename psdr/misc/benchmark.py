@@ -21,13 +21,13 @@ key = 'emitter.vertex_positions'
 params = mi.traverse(scene)
 initial_vertex_positions = dr.unravel(mi.Point3f, params[key])
 trafo = mi.Transform4f.translate([var, 0.0, 0.0])
-params[key] = dr.ravel(trafo @ initial_vertex_positions)
-# Propagate this change to the scene internal state
-params.update()
-
 num_iters = 1
 
 def primal_benchmark():
+    params[key] = dr.ravel(trafo @ initial_vertex_positions)
+    # Propagate this change to the scene internal state
+    params.update()
+    dr.eval()    
     avg_time_elapsed = 0.0
     for i in range(num_iters):
         t0 = time()
@@ -41,6 +41,10 @@ def primal_benchmark():
     mi.util.write_bitmap("../results/primal_mi.exr", image)
 
 def forward_ad_benchmark():
+    params[key] = dr.ravel(trafo @ initial_vertex_positions)
+    # Propagate this change to the scene internal state
+    params.update()
+    dr.eval()    
     avg_time_elapsed = 0.0
     for i in range(num_iters):
         t0 = time()
@@ -62,6 +66,10 @@ def forward_ad_benchmark():
     mi.util.write_bitmap("../results/derivative_mi.exr", grad_image)
 
 def backward_ad_benchmark():
+    params[key] = dr.ravel(trafo @ initial_vertex_positions)
+    # Propagate this change to the scene internal state
+    params.update()
+    dr.eval()
     # Render and record the computational graph
     film_size = params['PerspectiveCamera.film.size'] 
     image_ref = dr.zeros(dr.cuda.ad.TensorXf, [film_size[0], film_size[1], 3])
@@ -79,6 +87,6 @@ def backward_ad_benchmark():
     avg_time_elapsed /= num_iters
     print(f"[Benchmark] backward ad (spp = {spp}) takes {avg_time_elapsed} sec")
 
-primal_benchmark()
-forward_ad_benchmark()
+# primal_benchmark()
+# forward_ad_benchmark()
 backward_ad_benchmark()
