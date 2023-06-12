@@ -5,7 +5,7 @@ import mitsuba as mi
 
 import common
 
-class PathSpaceBasicIntegrator(common.PSIntegrator):
+class PathSpaceJitIntegrator(common.PSIntegrator):
     def __init__(self, props):
         super().__init__(props)
 
@@ -18,8 +18,6 @@ class PathSpaceBasicIntegrator(common.PSIntegrator):
                active: mi.Bool,
                **kwargs # Absorbs unused arguments
     ) -> Tuple[mi.Spectrum, mi.Bool, mi.Spectrum]:
-        primal = mode == dr.ADMode.Primal
-
         # Standard BSDF evaluation context for path tracing
         bsdf_ctx = mi.BSDFContext()
 
@@ -36,40 +34,30 @@ class PathSpaceBasicIntegrator(common.PSIntegrator):
         prev_bsdf_pdf = mi.Float(1.0)
         prev_bsdf_delta = mi.Bool(True)
 
-        depth_scalar = 0
-
-        # Record the following loop in its entirety
-        loop = mi.Loop(name="Path-Space Diff. Rendering (%s)" % mode.name,
-                       state=lambda: (sampler, ray, depth, L, β, active,
-                                      prev_pi, prev_ray, prev_bsdf_pdf, prev_bsdf_delta))
-        loop.set_max_iterations(self.max_depth)
-        while loop(active):
+        for idepth in range(self.max_depth):
             prev_si = prev_pi.compute_surface_interaction(prev_ray, mi.RayFlags.All | mi.RayFlags.FollowShape, active)
-
             # Enable RayFlags.FollowShape to avoid diff. ray-surface intersect
             pi = scene.ray_intersect_preliminary(ray, coherent=dr.eq(depth, 0), active=active)
             si = pi.compute_surface_interaction(ray, mi.RayFlags.All | mi.RayFlags.FollowShape, active)
-
             # Overwrite wi using path-space formulation
             active_next = si.is_valid()
             dir = ray.o - si.p
             wi = dr.normalize(dir)
             si.wi = dr.select(active_next, si.to_local(wi), si.wi)
-
             β_mult = mi.Float(0.0)
             β_pdf = mi.Float(1.0)
 
-            if primal:
+            if idepth == 0:
                 # Primary ray: re-write sensor importance
-                valid_primary_its = active_next & dr.eq(depth, 0)
+                valid_primary_its = mi.Bool(active_next)
                 _, cam_imp = sensor.sample_direction(si, mi.Point2f(), valid_primary_its)
                 cam_cos_imp = cam_imp * dr.abs(dr.dot(wi, si.n))
                 valid_primary_its &= cam_cos_imp > 0.0              # to remove nan values (why needed?)
                 β_mult = dr.select(valid_primary_its, si.j * cam_cos_imp, β_mult)
                 β_pdf = dr.select(valid_primary_its, dr.detach(cam_cos_imp), β_pdf)
-
+            else:
                 # Secondary ray: update based on 3-point BSDF
-                valid_sec_its = active_next & dr.neq(depth, 0)
+                valid_sec_its = mi.Bool(active_next)
                 prev_bsdf = prev_si.bsdf()
                 prev_bsdf_val = prev_bsdf.eval(bsdf_ctx,
                                             prev_si,
@@ -79,27 +67,6 @@ class PathSpaceBasicIntegrator(common.PSIntegrator):
                 geo_term = dr.abs(si.wi.z) / dr.squared_norm(dir)
                 β_mult = dr.select(valid_sec_its, si.j * prev_bsdf_val * geo_term, β_mult)
                 β_pdf = dr.select(valid_sec_its, prev_bsdf_pdf * dr.detach(geo_term), β_pdf)
-            else:
-                if depth_scalar == 0:
-                    # Primary ray: re-write sensor importance
-                    valid_primary_its = mi.Bool(active_next)
-                    _, cam_imp = sensor.sample_direction(si, mi.Point2f(), valid_primary_its)
-                    cam_cos_imp = cam_imp * dr.abs(dr.dot(wi, si.n))
-                    valid_primary_its &= cam_cos_imp > 0.0              # to remove nan values (why needed?)
-                    β_mult = dr.select(valid_primary_its, si.j * cam_cos_imp, β_mult)
-                    β_pdf = dr.select(valid_primary_its, dr.detach(cam_cos_imp), β_pdf)
-                else:
-                    # Secondary ray: update based on 3-point BSDF
-                    valid_sec_its = mi.Bool(active_next)
-                    prev_bsdf = prev_si.bsdf()
-                    prev_bsdf_val = prev_bsdf.eval(bsdf_ctx,
-                                                prev_si,
-                                                prev_si.to_local(-wi),
-                                                active_next)
-
-                    geo_term = dr.abs(si.wi.z) / dr.squared_norm(dir)
-                    β_mult = dr.select(valid_sec_its, si.j * prev_bsdf_val * geo_term, β_mult)
-                    β_pdf = dr.select(valid_sec_its, prev_bsdf_pdf * dr.detach(geo_term), β_pdf)
 
             # Update path throughput based on path-space formulation
             β *= β_mult / β_pdf
@@ -141,11 +108,9 @@ class PathSpaceBasicIntegrator(common.PSIntegrator):
             prev_pi = pi
             prev_bsdf_pdf = bsdf_sample.pdf
             prev_bsdf_delta = mi.has_flag(bsdf_sample.sampled_type, mi.BSDFFlags.Delta)
-
             depth[si.is_valid()] += 1
-            depth_scalar += 1
             active = active_next
 
         return L, active, None
 
-mi.register_integrator("psdr_basic", lambda props: PathSpaceBasicIntegrator(props))
+mi.register_integrator("psdr_jit", lambda props: PathSpaceJitIntegrator(props))

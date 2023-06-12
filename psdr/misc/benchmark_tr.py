@@ -81,8 +81,6 @@ def forward_ad_benchmark():
 def backward_ad_benchmark():
     image_ref = dr.zeros(dr.cuda.ad.Array3f, img_width * img_height)
     avg_time_elapsed = 0.0
-    sc_manager.configure()
-    dr.eval()
     for i in range(num_iters):
         t0 = time()
         image = integrator.renderD(Vector3fC())
@@ -97,5 +95,5 @@ def backward_ad_benchmark():
     print(f"[Benchmark] backward ad (spp = {spp}) takes {avg_time_elapsed} sec")
 
 # primal_benchmark()
-# forward_ad_benchmark()
+forward_ad_benchmark()
 # backward_ad_benchmark()

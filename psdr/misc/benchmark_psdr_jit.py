@@ -31,10 +31,13 @@ sc.param_map["Mesh[0]"].set_transform(Matrix4fD([[1.,0.,0.,var],
                                                  [0.,0.,0.,1.0],]))
 integrator = psdr.PathTracer(max_depth - 1)
 num_iters = 1
+sc.configure([0])
+dr.eval()
+# dr.set_log_level(3)
+# dr.set_flag(dr.JitFlag.KernelHistory, True)
+
 def primal_benchmark():
     avg_time_elapsed = 0.0
-    sc.configure([0])
-    dr.eval()
     for i in range(num_iters):
         t0 = time()
         image = integrator.renderC(sc, 0)
@@ -50,8 +53,6 @@ def primal_benchmark():
 
 def forward_ad_benchmark():
     avg_time_elapsed = 0.0
-    sc.configure([0])
-    dr.eval()
     for i in range(num_iters):
         t0 = time()
         image = integrator.renderD(sc, 0)
@@ -74,8 +75,6 @@ def forward_ad_benchmark():
 def backward_ad_benchmark():
     image_ref = dr.zeros(dr.cuda.ad.Array3f, sc.opts.width * sc.opts.height)
     avg_time_elapsed = 0.0
-    sc.configure([0])
-    dr.eval()
     for i in range(num_iters):
         t0 = time()
         image = integrator.renderD(sc, 0)
@@ -90,5 +89,7 @@ def backward_ad_benchmark():
     print(f"[Benchmark] backward ad (spp = {spp}) takes {avg_time_elapsed} sec")
 
 # primal_benchmark()
-forward_ad_benchmark()
-# backward_ad_benchmark()
+# forward_ad_benchmark()
+backward_ad_benchmark()
+# history = dr.kernel_history()
+# print(len(history))

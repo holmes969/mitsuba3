@@ -8,12 +8,14 @@ import mitsuba as mi
 mi.set_variant('cuda_ad_rgb')
 import drjit as dr
 import psdr_basic
+import psdr_jit
+import psdr_jit2
 from time import time
 
 spp = 64
 max_depth = 2
 scene_path = '../scenes/cbox_bunny.xml'
-scene = mi.load_file(scene_path, integrator='psdr_basic', max_depth=max_depth)
+scene = mi.load_file(scene_path, integrator='psdr_jit2', max_depth=max_depth)
 # Set parameter to be differentiated
 var = mi.Float(0.0)
 dr.enable_grad(var)
@@ -21,13 +23,15 @@ key = 'emitter.vertex_positions'
 params = mi.traverse(scene)
 initial_vertex_positions = dr.unravel(mi.Point3f, params[key])
 trafo = mi.Transform4f.translate([var, 0.0, 0.0])
+params[key] = dr.ravel(trafo @ initial_vertex_positions)
+# Propagate this change to the scene internal state
+params.update()
+dr.eval() 
 num_iters = 1
+# dr.set_log_level(3)
+# dr.set_flag(dr.JitFlag.KernelHistory, True)
 
 def primal_benchmark():
-    params[key] = dr.ravel(trafo @ initial_vertex_positions)
-    # Propagate this change to the scene internal state
-    params.update()
-    dr.eval()    
     avg_time_elapsed = 0.0
     for i in range(num_iters):
         t0 = time()
@@ -40,11 +44,7 @@ def primal_benchmark():
     print(f"[Benchmark] primal rendering (spp = {spp}) takes {avg_time_elapsed} sec")
     mi.util.write_bitmap("../results/primal_mi.exr", image)
 
-def forward_ad_benchmark():
-    params[key] = dr.ravel(trafo @ initial_vertex_positions)
-    # Propagate this change to the scene internal state
-    params.update()
-    dr.eval()    
+def forward_ad_benchmark():  
     avg_time_elapsed = 0.0
     for i in range(num_iters):
         t0 = time()
@@ -59,17 +59,13 @@ def forward_ad_benchmark():
         t1 = time()
         avg_time_elapsed += t1 - t0
     avg_time_elapsed /= num_iters
-
+    # dr.set_log_level(0)
     grad_image[:, :, 1] = 0.0
     grad_image[:, :, 2] = 0.0
     print(f"[Benchmark] forward ad (spp = {spp}) takes {avg_time_elapsed} sec")
     mi.util.write_bitmap("../results/derivative_mi.exr", grad_image)
 
 def backward_ad_benchmark():
-    params[key] = dr.ravel(trafo @ initial_vertex_positions)
-    # Propagate this change to the scene internal state
-    params.update()
-    dr.eval()
     # Render and record the computational graph
     film_size = params['PerspectiveCamera.film.size'] 
     image_ref = dr.zeros(dr.cuda.ad.TensorXf, [film_size[0], film_size[1], 3])
@@ -88,5 +84,8 @@ def backward_ad_benchmark():
     print(f"[Benchmark] backward ad (spp = {spp}) takes {avg_time_elapsed} sec")
 
 # primal_benchmark()
-# forward_ad_benchmark()
-backward_ad_benchmark()
+forward_ad_benchmark()
+# backward_ad_benchmark()
+
+# history = dr.kernel_history()
+# print(len(history))
