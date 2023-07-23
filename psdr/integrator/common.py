@@ -4,7 +4,6 @@ import mitsuba as mi
 import drjit as dr
 import gc
 
-
 class PSIntegrator(mi.CppADIntegrator):
     """
     Abstract base class of path-space differentiable integrators in Mitsuba
@@ -17,12 +16,6 @@ class PSIntegrator(mi.CppADIntegrator):
          corresponds to :math:`\\infty`). A value of 1 will only render directly
          visible light sources. 2 will lead to single-bounce (direct-only)
          illumination, and so on. (Default: 6)
-     * - rr_depth
-       - |int|
-       - Specifies the path depth, at which the implementation will begin to use
-         the *russian roulette* path termination criterion. For example, if set to
-         1, then path generation many randomly cease after encountering directly
-         visible surfaces. (Default: 5)
     """
 
     def __init__(self, props = mi.Properties()):
@@ -35,16 +28,11 @@ class PSIntegrator(mi.CppADIntegrator):
         # Map -1 (infinity) to 2^32-1 bounces
         self.max_depth = max_depth if max_depth != -1 else 0xffffffff
 
-        self.rr_depth = props.get('rr_depth', 5)
-        if self.rr_depth <= 0:
-            raise Exception("\"rr_depth\" must be set to a value greater than zero!")
-
     def aovs(self):
         return []
 
     def to_string(self):
-        return f'{type(self).__name__}[max_depth = {self.max_depth},' \
-               f' rr_depth = { self.rr_depth }]'
+        return f'{type(self).__name__}[max_depth = {self.max_depth}]'
 
     def render(self: mi.SamplingIntegrator,
                scene: mi.Scene,
@@ -82,7 +70,7 @@ class PSIntegrator(mi.CppADIntegrator):
                 scene=scene,
                 sensor=sensor,
                 sampler=sampler,
-                ray=ray,
+                ray_in=ray,
                 depth=mi.UInt32(0),
                 δL=None,
                 state_in=None,
@@ -143,7 +131,7 @@ class PSIntegrator(mi.CppADIntegrator):
                         scene=scene,
                         sensor=sensor,
                         sampler=sampler,
-                        ray=ray,
+                        ray_in=ray,
                         active=mi.Bool(True)
                     )
 
@@ -206,7 +194,7 @@ class PSIntegrator(mi.CppADIntegrator):
                         scene=scene,
                         sensor=sensor,
                         sampler=sampler,
-                        ray=ray,
+                        ray_in=ray,
                         active=mi.Bool(True)
                     )
 
@@ -419,77 +407,202 @@ class PSIntegrator(mi.CppADIntegrator):
                δL: Optional[mi.Spectrum],
                state_in: Any,
                active: mi.Bool) -> Tuple[mi.Spectrum, mi.Bool]:
-        """
-        This function does the main work of differentiable rendering and
-        remains unimplemented here. It is provided by subclasses of the
-        ``RBIntegrator`` interface.
 
-        In those concrete implementations, the function performs a Monte Carlo
-        random walk, implementing a number of different behaviors depending on
-        the ``mode`` argument. For example in primal mode (``mode ==
-        drjit.ADMode.Primal``), it behaves like a normal rendering algorithm
-        and estimates the radiance incident along ``ray``.
-
-        In forward mode (``mode == drjit.ADMode.Forward``), it estimates the
-        derivative of the incident radiance for a set of scene parameters being
-        differentiated. (This requires that these parameters are attached to
-        the AD graph and have gradients specified via ``dr.set_grad()``)
-
-        In backward mode (``mode == drjit.ADMode.Backward``), it takes adjoint
-        radiance ``δL`` and accumulates it into differentiable scene parameters.
-
-        You are normally *not* expected to directly call this function. Instead,
-        use ``mi.render()`` , which performs various necessary
-        setup steps to correctly use the functionality provided here.
-
-        The parameters of this function are as follows:
-
-        Parameter ``mode`` (``drjit.ADMode``)
-            Specifies whether the rendering algorithm should run in primal or
-            forward/backward derivative propagation mode
-
-        Parameter ``scene`` (``mi.Scene``):
-            Reference to the scene being rendered in a differentiable manner.
-
-        Parameter ``sampler`` (``mi.Sampler``):
-            A pre-seeded sample generator
-
-        Parameter ``depth`` (``mi.UInt32``):
-            Path depth of `ray` (typically set to zero). This is mainly useful
-            for forward/backward differentiable rendering phases that need to
-            obtain an incident radiance estimate. In this case, they may
-            recursively invoke ``sample(mode=dr.ADMode.Primal)`` with a nonzero
-            depth.
-
-        Parameter ``δL`` (``mi.Spectrum``):
-            When back-propagating gradients (``mode == drjit.ADMode.Backward``)
-            the ``δL`` parameter should specify the adjoint radiance associated
-            with each ray. Otherwise, it must be set to ``None``.
-
-        Parameter ``state_in`` (``Any``):
-            The primal phase of ``sample()`` returns a state vector as part of
-            its return value. The forward/backward differential phases expect
-            that this state vector is provided to them via this argument. When
-            invoked in primal mode, it should be set to ``None``.
-
-        Parameter ``active`` (``mi.Bool``):
-            This mask array can optionally be used to indicate that some of
-            the rays are disabled.
-
-        The function returns a tuple ``(spec, valid, state_out)`` where
-
-        Output ``spec`` (``mi.Spectrum``):
-            Specifies the estimated radiance and differential radiance in
-            primal and forward mode, respectively.
-
-        Output ``valid`` (``mi.Bool``):
-            Indicates whether the rays intersected a surface, which can be used
-            to compute an alpha channel.
-        """
-
-        raise Exception('RBIntegrator does not provide the sample() method. '
+        raise Exception('PSIntegrator does not provide the sample() method. '
                         'It should be implemented by subclasses that '
                         'specialize the abstract RBIntegrator interface.')
+
+class PSIntegratorPRB(PSIntegrator):
+    """
+    Abstract base class of PRB-style path-space differentiable integrators.
+    """
+
+    def render_forward(self: mi.SamplingIntegrator,
+                       scene: mi.Scene,
+                       params: Any,
+                       sensor: Union[int, mi.Sensor] = 0,
+                       seed: int = 0,
+                       spp: int = 0) -> mi.TensorXf:
+
+        if isinstance(sensor, int):
+            sensor = scene.sensors()[sensor]
+
+        film = sensor.film()
+        aovs = self.aovs()
+
+        # Disable derivatives in all of the following
+        with dr.suspend_grad():
+            # Prepare the film and sample generator for rendering
+            sampler, spp = self.prepare(sensor, seed, spp, aovs)
+
+            # Generate a set of rays starting at the sensor
+            ray, weight, pos = self.sample_rays(scene, sensor, sampler)
+            
+            # Launch the Monte Carlo sampling process in primal mode (1)
+            L, valid, state_out = self.sample(
+                mode=dr.ADMode.Primal,
+                scene=scene,
+                sensor=sensor,
+                sampler=sampler.clone(),
+                ray_in=ray,
+                depth=mi.UInt32(0),
+                δL=None,
+                state_in=None,
+                active=mi.Bool(True)
+            )
+
+            # Launch the Monte Carlo sampling process in forward mode (2)
+            δL, valid_2, state_out_2 = self.sample(
+                mode=dr.ADMode.Forward,
+                scene=scene,
+                sensor=sensor,
+                sampler=sampler,
+                ray_in=ray,
+                depth=mi.UInt32(0),
+                δL=None,
+                state_in=state_out,
+                active=mi.Bool(True)
+            )
+
+            # Prepare an ImageBlock as specified by the film
+            block = film.create_block()
+
+            # Only use the coalescing feature when rendering enough samples
+            block.set_coalesce(block.coalesce() and spp >= 4)
+
+            # Accumulate into the image block
+            PSIntegrator._splat_to_block(
+                block, film, pos,
+                value=δL * weight,
+                weight=1.0,
+                alpha=dr.select(valid_2, mi.Float(1), mi.Float(0)),
+                wavelengths=ray.wavelengths
+            )
+
+            # Perform the weight division and return an image tensor
+            film.put_block(block)
+
+            # Explicitly delete any remaining unused variables
+            del sampler, ray, weight, pos, L, valid, δL, valid_2, params, \
+                state_out, state_out_2, block
+
+            # Probably a little overkill, but why not.. If there are any
+            # DrJit arrays to be collected by Python's cyclic GC, then
+            # freeing them may enable loop simplifications in dr.eval().
+            gc.collect()
+            result_grad = film.develop()
+
+        return result_grad
+
+    def render_backward(self: mi.SamplingIntegrator,
+                        scene: mi.Scene,
+                        params: Any,
+                        grad_in: mi.TensorXf,
+                        sensor: Union[int, mi.Sensor] = 0,
+                        seed: int = 0,
+                        spp: int = 0) -> None:
+
+        if isinstance(sensor, int):
+            sensor = scene.sensors()[sensor]
+
+        film = sensor.film()
+        aovs = self.aovs()
+
+        # Disable derivatives in all of the following
+        with dr.suspend_grad():
+            # Prepare the film and sample generator for rendering
+            sampler, spp = self.prepare(sensor, seed, spp, aovs)
+
+            # Generate a set of rays starting at the sensor
+            ray, weight, pos = self.sample_rays(scene, sensor, sampler)
+
+            def splatting_and_backward_gradient_image(value: mi.Spectrum,
+                                                      weight: mi.Float,
+                                                      alpha: mi.Float):
+                '''
+                Backward propagation of the gradient image through the sample
+                splatting and weight division steps.
+                '''
+
+                # Prepare an ImageBlock as specified by the film
+                block = film.create_block()
+
+                # Only use the coalescing feature when rendering enough samples
+                block.set_coalesce(block.coalesce() and spp >= 4)
+
+                PSIntegrator._splat_to_block(
+                    block, film, pos,
+                    value=value,
+                    weight=weight,
+                    alpha=alpha,
+                    wavelengths=ray.wavelengths
+                )
+
+                film.put_block(block)
+
+                # Probably a little overkill, but why not.. If there are any
+                # DrJit arrays to be collected by Python's cyclic GC, then
+                # freeing them may enable loop simplifications in dr.eval().
+                gc.collect()
+
+                image = film.develop()
+
+                dr.set_grad(image, grad_in)
+                dr.enqueue(dr.ADMode.Backward, image)
+                dr.traverse(mi.Float, dr.ADMode.Backward)
+
+            # Differentiate sample splatting and weight division steps to
+            # retrieve the adjoint radiance (e.g. 'δL')
+            with dr.resume_grad():
+                with dr.suspend_grad(pos, ray, weight):
+                    L = dr.full(mi.Spectrum, 1.0, dr.width(ray))
+                    dr.enable_grad(L)
+
+                    splatting_and_backward_gradient_image(
+                        value=L * weight,
+                        weight=1.0,
+                        alpha=1.0
+                    )
+
+                    δL = dr.grad(L)
+
+            # Clear the dummy data splatted on the film above
+            film.clear()
+
+            # Launch the Monte Carlo sampling process in primal mode (1)
+            L, valid, state_out = self.sample(
+                mode=dr.ADMode.Primal,
+                scene=scene,
+                sensor=sensor,
+                sampler=sampler.clone(),
+                ray=ray,
+                depth=mi.UInt32(0),
+                δL=None,
+                state_in=None,
+                active=mi.Bool(True)
+            )
+
+            # Launch Monte Carlo sampling in backward AD mode (2)
+            L_2, valid_2, state_out_2 = self.sample(
+                mode=dr.ADMode.Backward,
+                scene=scene,
+                sensor=sensor,
+                sampler=sampler,
+                ray=ray,
+                depth=mi.UInt32(0),
+                δL=δL,
+                state_in=state_out,
+                active=mi.Bool(True)
+            )
+
+            # We don't need any of the outputs here
+            del L_2, valid_2, state_out, state_out_2, δL, \
+                ray, weight, pos, sampler
+
+            gc.collect()
+
+            # Run kernel representing side effects of the above
+            dr.eval()
 
 def mis_weight(pdf_a, pdf_b):
     """

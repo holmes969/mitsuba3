@@ -9,7 +9,6 @@ mi.set_variant('cuda_ad_rgb')
 
 import drjit as dr
 import psdr_basic
-import psdr_direct
 
 
 # dr.set_log_level(3)

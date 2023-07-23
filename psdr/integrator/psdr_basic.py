@@ -126,7 +126,7 @@ class PathSpaceBasicIntegrator(common.PSIntegrator):
             wo = si.to_local(ds.d)
             bsdf_value_em, bsdf_pdf_em = bsdf.eval_pdf(bsdf_ctx, si, wo, active_em)
             mis_em = dr.select(ds.delta, 1, common.mis_weight(ds.pdf, bsdf_pdf_em))
-            L += mis_em * bsdf_value_em * em_weight * β * ds.J
+            L += mis_em * bsdf_value_em * em_weight * β * ds.j
 
             # ------------------ Detached BSDF sampling -------------------
             with dr.suspend_grad():

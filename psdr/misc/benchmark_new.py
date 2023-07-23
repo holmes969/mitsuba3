@@ -14,7 +14,9 @@ if pbdr_sys == 'mitsuba':
     sys.path.insert(0, os.path.join(mitsuba_path, 'psdr\integrator'))
     import mitsuba as mi
     mi.set_variant('cuda_ad_rgb')
-    import psdr_jit2
+    import psdr_jit
+    import psdr_basic
+    import psdr_jit_prb
 elif pbdr_sys == 'psdr':
     psdr_path = os.path.abspath("../../../psdr-jit/")
     sys.path.insert(0, os.path.join(psdr_path, 'build\python'))
@@ -27,7 +29,7 @@ from drjit.cuda import Array3f as Vector3fC
 from time import time
 
 # render options
-max_depth = 5
+max_depth = 2
 spp = 128
 
 # load 3D scene
@@ -37,7 +39,7 @@ result_dir = '../results/'
 
 if pbdr_sys == 'mitsuba':
     scene_path = os.path.join(scene_dir, scene_fn)
-    sc = mi.load_file(scene_path, integrator='psdr_jit2', max_depth=max_depth)
+    sc = mi.load_file(scene_path, integrator='psdr_jit_prb', max_depth=max_depth)
 elif pbdr_sys == 'psdr':
     curr_dir = os. getcwd()
     os.chdir(scene_dir)

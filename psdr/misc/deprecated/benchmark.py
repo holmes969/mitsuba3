@@ -9,13 +9,12 @@ mi.set_variant('cuda_ad_rgb')
 import drjit as dr
 import psdr_basic
 import psdr_jit
-import psdr_jit2
 from time import time
 
 spp = 64
 max_depth = 2
 scene_path = '../scenes/cbox_bunny.xml'
-scene = mi.load_file(scene_path, integrator='psdr_jit2', max_depth=max_depth)
+scene = mi.load_file(scene_path, integrator='psdr_jit', max_depth=max_depth)
 # Set parameter to be differentiated
 var = mi.Float(0.0)
 dr.enable_grad(var)
@@ -77,6 +76,7 @@ def backward_ad_benchmark():
         dr.backward(loss)
         grad_val = dr.grad(var)
         dr.eval(grad_val)
+        print(grad_val)
         dr.sync_thread()
         t1 = time()
         avg_time_elapsed += t1 - t0
@@ -84,8 +84,8 @@ def backward_ad_benchmark():
     print(f"[Benchmark] backward ad (spp = {spp}) takes {avg_time_elapsed} sec")
 
 # primal_benchmark()
-forward_ad_benchmark()
-# backward_ad_benchmark()
+# forward_ad_benchmark()
+backward_ad_benchmark()
 
 # history = dr.kernel_history()
 # print(len(history))
