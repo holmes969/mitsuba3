@@ -42,32 +42,32 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
         prev_bsdf_delta = mi.Bool(True)
         pi              = scene.ray_intersect_preliminary(ray, coherent=dr.eq(depth, 0))
 
-        # # Handle differentiation of camera importance outside of Loop
-        # if not primal:
-        #     with dr.resume_grad():
-        #         si = pi.compute_surface_interaction(ray, mi.RayFlags.All | mi.RayFlags.FollowShape)
-        #         _, cam_imp = sensor.sample_direction(si, mi.Point2f(), si.is_valid())             
-        #         dir = ray_in.o - si.p
-        #         wi = dr.normalize(dir)
-        #         val = cam_imp * dr.abs(dr.dot(wi, si.n))
-        #         imp = dr.select(dr.neq(val, 0), val / dr.detach(val), 0)
-        #         Lo = imp * L
-        #         if dr.flag(dr.JitFlag.VCallRecord) and not dr.grad_enabled(Lo):
-        #             raise Exception(
-        #                 "The contribution computed by the differential "
-        #                 "rendering phase is not attached to the AD graph! "
-        #                 "Raising an exception since this is usually "
-        #                 "indicative of a bug (for example, you may have "
-        #                 "forgotten to call dr.enable_grad(..) on one of "
-        #                 "the scene parameters, or you may be trying to "
-        #                 "optimize a parameter that does not generate "
-        #                 "derivatives in detached PRB.)")
+        # Handle differentiation of camera importance outside of Loop
+        if not primal:
+            with dr.resume_grad():
+                si = pi.compute_surface_interaction(ray, mi.RayFlags.All | mi.RayFlags.FollowShape)
+                _, cam_imp = sensor.sample_direction(si, mi.Point2f(), si.is_valid())             
+                dir = ray_in.o - si.p
+                wi = dr.normalize(dir)
+                val = cam_imp * dr.abs(dr.dot(wi, si.n))
+                imp = dr.select(dr.neq(val, 0), val / dr.detach(val), 0)
+                Lo = imp * L
+                if dr.flag(dr.JitFlag.VCallRecord) and not dr.grad_enabled(Lo):
+                    raise Exception(
+                        "The contribution computed by the differential "
+                        "rendering phase is not attached to the AD graph! "
+                        "Raising an exception since this is usually "
+                        "indicative of a bug (for example, you may have "
+                        "forgotten to call dr.enable_grad(..) on one of "
+                        "the scene parameters, or you may be trying to "
+                        "optimize a parameter that does not generate "
+                        "derivatives in detached PRB.)")
 
-        #         # Propagate derivatives from/to 'Lo' based on 'mode'
-        #         if mode == dr.ADMode.Backward:
-        #             dr.backward_from(δL * Lo)
-        #         else:
-        #             δL += dr.forward_to(Lo)
+                # Propagate derivatives from/to 'Lo' based on 'mode'
+                if mode == dr.ADMode.Backward:
+                    dr.backward_from(δL * Lo)
+                else:
+                    δL += dr.forward_to(Lo)
 
         # Record the following loop in its entirety
         loop = mi.Loop(name="Path-Space Diff. Rendering (%s)" % mode.name,
@@ -127,42 +127,41 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
             β *= bsdf_weight
             pi = scene.ray_intersect_preliminary(ray, coherent=dr.eq(depth, 0))
 
-            # # ------------------ Differential phase only ------------------
-            # if not primal:
-            #     with dr.resume_grad():
-            #         si_next = pi.compute_surface_interaction(ray, mi.RayFlags.All | mi.RayFlags.FollowShape, active_next)
-            #         wo = si_next.p - si.p
-            #         dist = dr.norm(wo)
-            #         wo /= dist
-            #         # Detached version of the above term and inverse
-            #         bsdf_val_det = bsdf_weight * bsdf_sample.pdf
-            #         inv_bsdf_val_det = dr.select(dr.neq(bsdf_val_det, 0),
-            #                                      dr.rcp(bsdf_val_det), 0)
-            #         # Re-evaluate (differentiably) BSDF * cos(theta) * G
-            #         bsdf_val = bsdf.eval(bsdf_ctx, si, si.to_local(wo), active_next)
-            #         geo_term = dr.abs(dr.dot(wo, si.n)) / (dist * dist)
-            #         vert_val = bsdf_val * geo_term / dr.detach(geo_term) * si.j
-            #         vert_val = dr.select(dr.neq(vert_val, 0), vert_val, 0)
-            #         Lr_ind = L * dr.replace_grad(1, inv_bsdf_val_det * vert_val)
-                    
-            #         # Differentiable Monte Carlo estimate of all contributions
-            #         Lo = Le + Lr_dir + Lr_ind
-            #         if dr.flag(dr.JitFlag.VCallRecord) and not dr.grad_enabled(Lo):
-            #             raise Exception(
-            #                 "The contribution computed by the differential "
-            #                 "rendering phase is not attached to the AD graph! "
-            #                 "Raising an exception since this is usually "
-            #                 "indicative of a bug (for example, you may have "
-            #                 "forgotten to call dr.enable_grad(..) on one of "
-            #                 "the scene parameters, or you may be trying to "
-            #                 "optimize a parameter that does not generate "
-            #                 "derivatives in detached PRB.)")
+            # ------------------ Differential phase only ------------------
+            if not primal:
+                with dr.resume_grad():
+                    si_next = pi.compute_surface_interaction(ray, mi.RayFlags.All | mi.RayFlags.FollowShape, active_next)
+                    wo = si_next.p - si.p
+                    dist = dr.norm(wo)
+                    wo /= dist
+                    # Detached version of the above term and inverse
+                    bsdf_val_det = bsdf_weight * bsdf_sample.pdf
+                    inv_bsdf_val_det = dr.select(dr.neq(bsdf_val_det, 0),
+                                                 dr.rcp(bsdf_val_det), 0)
+                    # Re-evaluate (differentiably) BSDF * cos(theta) * G
+                    bsdf_val = bsdf.eval(bsdf_ctx, si, si.to_local(wo), active_next)
+                    geo_term = dr.abs(dr.dot(wo, si.n)) / (dist * dist)
+                    vert_val = bsdf_val * geo_term / dr.detach(geo_term) * si.j
+                    vert_val = dr.select(dr.neq(vert_val, 0), vert_val, 0)
+                    Lr_ind = L * dr.replace_grad(1, inv_bsdf_val_det * vert_val)
+                    # Differentiable Monte Carlo estimate of all contributions
+                    Lo = Le + Lr_dir + Lr_ind
+                    if dr.flag(dr.JitFlag.VCallRecord) and not dr.grad_enabled(Lo):
+                        raise Exception(
+                            "The contribution computed by the differential "
+                            "rendering phase is not attached to the AD graph! "
+                            "Raising an exception since this is usually "
+                            "indicative of a bug (for example, you may have "
+                            "forgotten to call dr.enable_grad(..) on one of "
+                            "the scene parameters, or you may be trying to "
+                            "optimize a parameter that does not generate "
+                            "derivatives in detached PRB.)")
 
-            #         # Propagate derivatives from/to 'Lo' based on 'mode'
-            #         if mode == dr.ADMode.Backward:
-            #             dr.backward_from(δL * Lo)
-            #         else:
-            #             δL += dr.forward_to(Lo)
+                    # Propagate derivatives from/to 'Lo' based on 'mode'
+                    if mode == dr.ADMode.Backward:
+                        dr.backward_from(δL * Lo)
+                    else:
+                        δL += dr.forward_to(Lo)
 
             # -------------------- Stopping criterion ---------------------
             β_max = dr.max(β)

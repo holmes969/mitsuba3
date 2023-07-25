@@ -39,7 +39,7 @@ result_dir = '../results/'
 
 if pbdr_sys == 'mitsuba':
     scene_path = os.path.join(scene_dir, scene_fn)
-    sc = mi.load_file(scene_path, integrator='prb', max_depth=max_depth)
+    sc = mi.load_file(scene_path, integrator='psdr_jit_prb', max_depth=max_depth)
 elif pbdr_sys == 'psdr':
     curr_dir = os. getcwd()
     os.chdir(scene_dir)
@@ -117,7 +117,7 @@ if test_case == 'primal':
     res = renderer(var)     # primal rendering
 elif test_case == 'fwd':
     if pbdr_sys == 'mitsuba':
-        dr.set_grad(dr_var, 1.0)
+        dr.forward(dr_var, dr.ADFlag.ClearEdges)
         res = sc.integrator().render_forward(sc, params, spp = spp).torch()
     elif pbdr_sys == 'psdr':
         image = integrator.renderD(sc, 0)
