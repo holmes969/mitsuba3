@@ -39,7 +39,7 @@ result_dir = '../results/'
 
 if pbdr_sys == 'mitsuba':
     scene_path = os.path.join(scene_dir, scene_fn)
-    sc = mi.load_file(scene_path, integrator='psdr_jit_prb', max_depth=max_depth)
+    sc = mi.load_file(scene_path, integrator='prb', max_depth=max_depth)
 elif pbdr_sys == 'psdr':
     curr_dir = os. getcwd()
     os.chdir(scene_dir)
@@ -55,7 +55,7 @@ var = torch.tensor([0.0], device='cuda', dtype=torch.float32, requires_grad = Tr
 if pbdr_sys == 'mitsuba':
     dr_var = mi.Float(var)
     dr.enable_grad(dr_var)
-    key = 'emitter.vertex_positions'
+    key = 'bunny_shape.vertex_positions'
     params = mi.traverse(sc)
     initial_vertex_positions = dr.unravel(mi.Point3f, params[key])
     trafo = mi.Transform4f.translate([dr_var, 0.0, 0.0])
@@ -128,6 +128,7 @@ elif test_case == 'bwd':
     img_target = torch.zeros(img.shape, device = img.device)
     loss = torch.mean(torch.square(img_target - img))
     loss.backward()
+    del loss
 dr.eval()
 dr.sync_thread()
 t1 = time()

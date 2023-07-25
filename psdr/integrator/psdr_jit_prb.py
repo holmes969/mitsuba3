@@ -14,22 +14,20 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
                scene: mi.Scene,
                sensor: mi.Sensor,
                sampler: mi.Sampler,
-               ray_in: mi.Ray3f,
+               ray: mi.Ray3f,
                δL: Optional[mi.Spectrum],
                state_in: Optional[mi.Spectrum],
                active: mi.Bool,
                **kwargs # Absorbs unused arguments
     ) -> Tuple[mi.Spectrum, mi.Bool, mi.Spectrum]:
-        
         # Rendering a primal image? (vs performing forward/reverse-mode AD)
         primal = mode == dr.ADMode.Primal
-
         # Standard BSDF evaluation context for path tracing
         bsdf_ctx = mi.BSDFContext()
-        
+        ray_in = ray
         # --------------------- Configure loop state ----------------------
         # Copy input arguments to avoid mutating the caller's state
-        ray = mi.Ray3f(dr.detach(ray_in))
+        ray = mi.Ray3f(dr.detach(ray))
         depth = mi.UInt32(0)                          # Depth of current vertex
         L = mi.Spectrum(0 if primal else state_in)    # Radiance accumulator
         δL = mi.Spectrum(δL if δL is not None else 0) # Differential/adjoint radiance
@@ -37,51 +35,58 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
         η = mi.Float(1)                               # Index of refraction
         active = mi.Bool(active)                      # Active SIMD lanes
         
-        # Variables caching information from the previous bounce
+        # Variables caching information from the previous iteration
         prev_pi         = dr.zeros(mi.PreliminaryIntersection3f)
         prev_ray        = dr.zeros(mi.Ray3f)
         prev_bsdf_pdf   = mi.Float(1.0)
         prev_bsdf_delta = mi.Bool(True)
+        pi              = scene.ray_intersect_preliminary(ray, coherent=dr.eq(depth, 0))
 
-       # Record the following loop in its entirety
-        loop = mi.Loop(name="Path Replay Backpropagation (%s) for PSDR" % mode.name,
-                       state=lambda: (sampler, ray, depth, L, δL, β, η, active,
-                                      prev_pi, prev_bsdf_pdf, prev_bsdf_delta))
+        # # Handle differentiation of camera importance outside of Loop
+        # if not primal:
+        #     with dr.resume_grad():
+        #         si = pi.compute_surface_interaction(ray, mi.RayFlags.All | mi.RayFlags.FollowShape)
+        #         _, cam_imp = sensor.sample_direction(si, mi.Point2f(), si.is_valid())             
+        #         dir = ray_in.o - si.p
+        #         wi = dr.normalize(dir)
+        #         val = cam_imp * dr.abs(dr.dot(wi, si.n))
+        #         imp = dr.select(dr.neq(val, 0), val / dr.detach(val), 0)
+        #         Lo = imp * L
+        #         if dr.flag(dr.JitFlag.VCallRecord) and not dr.grad_enabled(Lo):
+        #             raise Exception(
+        #                 "The contribution computed by the differential "
+        #                 "rendering phase is not attached to the AD graph! "
+        #                 "Raising an exception since this is usually "
+        #                 "indicative of a bug (for example, you may have "
+        #                 "forgotten to call dr.enable_grad(..) on one of "
+        #                 "the scene parameters, or you may be trying to "
+        #                 "optimize a parameter that does not generate "
+        #                 "derivatives in detached PRB.)")
 
-        # Specify the max. number of loop iterations (this can help avoid
-        # costly synchronization when when wavefront-style loops are generated)
+        #         # Propagate derivatives from/to 'Lo' based on 'mode'
+        #         if mode == dr.ADMode.Backward:
+        #             dr.backward_from(δL * Lo)
+        #         else:
+        #             δL += dr.forward_to(Lo)
+
+        # Record the following loop in its entirety
+        loop = mi.Loop(name="Path-Space Diff. Rendering (%s)" % mode.name,
+                       state=lambda: (sampler, ray, depth, L, β, active, pi,
+                                      prev_pi, prev_ray, prev_bsdf_pdf, prev_bsdf_delta))
         loop.set_max_iterations(self.max_depth)
-        depth_scalar = 0
-        
         while loop(active):
-            # Compute a surface interaction that tracks derivatives arising
-            # from differentiable shape parameters (position, normals, etc.)
-            # In primal mode, this is just an ordinary ray tracing operation.
-            pi = scene.ray_intersect_preliminary(ray, coherent=dr.eq(depth, 0))
+            # Enable RayFlags.FollowShape to avoid diff. ray-surface intersect
             with dr.resume_grad(when=not primal):
-                # for non-primary rays, consider them as static
-                if depth_scalar != 0:
-                    ray_flags = mi.RayFlags.All | mi.RayFlags.FollowShape
-                    si = pi.compute_surface_interaction(ray, ray_flags)
-                    active_next = si.is_valid()
-                    # recompute the previous intersection (more light-weight func?)
-                    if depth_scalar == 1:
-                        prev_si = prev_pi.compute_surface_interaction(ray_in, mi.RayFlags.All)
-                    else:
-                        prev_si = prev_pi.compute_surface_interaction(prev_ray, ray_flags)
-                    wo = si.p - prev_si.p
-                    dist = dr.norm(wo)
-                    wo /= dist
-                    si.wi = dr.select(active_next, si.to_local(-wo), si.wi)
-                else:
-                    prev_si = dr.zeros(mi.SurfaceInteraction3f)
-                    ray_flags = mi.RayFlags.All
-                    si = pi.compute_surface_interaction(ray_in, ray_flags)
-                    active_next = si.is_valid()
-            bsdf = si.bsdf(ray)
+                prev_si = prev_pi.compute_surface_interaction(prev_ray, mi.RayFlags.All | mi.RayFlags.FollowShape)
+                si = pi.compute_surface_interaction(ray, mi.RayFlags.All | mi.RayFlags.FollowShape)
+                prev_p = dr.select(dr.eq(depth, 0), ray_in.o, prev_si.p)
+                # Overwrite wi using path-space formulation
+                active_next = si.is_valid()                
+                dir = prev_p - si.p
+                wi = dr.normalize(dir)
+                si.wi = dr.select(active_next, si.to_local(wi), si.wi)
 
             # ---------------------- Direct emission ----------------------
-            # Compute MIS weight for emitter sample from previous bounce
             ds = mi.DirectionSample3f(scene, si=si, ref=prev_si)
             mis = common.mis_weight(
                 prev_bsdf_pdf,
@@ -90,25 +95,24 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
             with dr.resume_grad(when=not primal):
                 Le = β * mis * ds.emitter.eval(si)
 
-            # Should we continue tracing to reach one more vertex?
-            active_next &= depth + 1 < self.max_depth
-
+            bsdf = si.bsdf(ray)
             # ---------------------- Emitter sampling ----------------------
+            active_next &= depth + 1 < self.max_depth
             active_em = active_next & mi.has_flag(bsdf.flags(), mi.BSDFFlags.Smooth)
             with dr.resume_grad(when=not primal):
                 ds, em_weight = scene.sample_emitter_direction(si, sampler.next_2d(), True, active_em)
-                active_em = active & dr.neq(ds.pdf, 0.0)
+                active_em &= dr.neq(ds.pdf, 0.0)
                 wo = si.to_local(ds.d)
                 bsdf_value_em, bsdf_pdf_em = bsdf.eval_pdf(bsdf_ctx, si, wo, active_em)
                 mis_em = dr.select(ds.delta, 1, common.mis_weight(ds.pdf, bsdf_pdf_em))
                 Lr_dir = β * mis_em * bsdf_value_em * em_weight * ds.j
 
-            
             # ------------------ Detached BSDF sampling -------------------
             bsdf_sample, bsdf_weight = bsdf.sample(bsdf_ctx, si,
                                                    sampler.next_1d(),
                                                    sampler.next_2d(),
                                                    active_next)
+
             # Information about the current vertex needed by the next iteration
             prev_ray = ray
             prev_pi = pi
@@ -116,19 +120,53 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
             prev_bsdf_delta = mi.has_flag(bsdf_sample.sampled_type, mi.BSDFFlags.Delta)
 
             # ---- Update loop variables based on current interaction -----
-            #L = (L + Le + Lr_dir) if primal else (L - Le - Lr_dir)
-            L = L + Le
+            depth[si.is_valid()] += 1
+            L = (L + Le + Lr_dir) if primal else (L - Le - Lr_dir)
             ray = si.spawn_ray(si.to_world(bsdf_sample.wo))
             η *= bsdf_sample.eta
             β *= bsdf_weight
+            pi = scene.ray_intersect_preliminary(ray, coherent=dr.eq(depth, 0))
+
+            # # ------------------ Differential phase only ------------------
+            # if not primal:
+            #     with dr.resume_grad():
+            #         si_next = pi.compute_surface_interaction(ray, mi.RayFlags.All | mi.RayFlags.FollowShape, active_next)
+            #         wo = si_next.p - si.p
+            #         dist = dr.norm(wo)
+            #         wo /= dist
+            #         # Detached version of the above term and inverse
+            #         bsdf_val_det = bsdf_weight * bsdf_sample.pdf
+            #         inv_bsdf_val_det = dr.select(dr.neq(bsdf_val_det, 0),
+            #                                      dr.rcp(bsdf_val_det), 0)
+            #         # Re-evaluate (differentiably) BSDF * cos(theta) * G
+            #         bsdf_val = bsdf.eval(bsdf_ctx, si, si.to_local(wo), active_next)
+            #         geo_term = dr.abs(dr.dot(wo, si.n)) / (dist * dist)
+            #         vert_val = bsdf_val * geo_term / dr.detach(geo_term) * si.j
+            #         vert_val = dr.select(dr.neq(vert_val, 0), vert_val, 0)
+            #         Lr_ind = L * dr.replace_grad(1, inv_bsdf_val_det * vert_val)
+                    
+            #         # Differentiable Monte Carlo estimate of all contributions
+            #         Lo = Le + Lr_dir + Lr_ind
+            #         if dr.flag(dr.JitFlag.VCallRecord) and not dr.grad_enabled(Lo):
+            #             raise Exception(
+            #                 "The contribution computed by the differential "
+            #                 "rendering phase is not attached to the AD graph! "
+            #                 "Raising an exception since this is usually "
+            #                 "indicative of a bug (for example, you may have "
+            #                 "forgotten to call dr.enable_grad(..) on one of "
+            #                 "the scene parameters, or you may be trying to "
+            #                 "optimize a parameter that does not generate "
+            #                 "derivatives in detached PRB.)")
+
+            #         # Propagate derivatives from/to 'Lo' based on 'mode'
+            #         if mode == dr.ADMode.Backward:
+            #             dr.backward_from(δL * Lo)
+            #         else:
+            #             δL += dr.forward_to(Lo)
 
             # -------------------- Stopping criterion ---------------------
-            # Don't run another iteration if the throughput has reached zero
             β_max = dr.max(β)
             active_next &= dr.neq(β_max, 0)
-
-            depth_scalar += 1
-            depth[si.is_valid()] += 1
             active = active_next
 
         return (
@@ -136,6 +174,4 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
             dr.neq(depth, 0),    # Ray validity flag for alpha blending
             L                    # State for the differential phase
         )
-
-        return L, active, None
 mi.register_integrator("psdr_jit_prb", lambda props: PathSpaceJitIntegratorPRB(props))

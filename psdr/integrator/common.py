@@ -70,7 +70,7 @@ class PSIntegrator(mi.CppADIntegrator):
                 scene=scene,
                 sensor=sensor,
                 sampler=sampler,
-                ray_in=ray,
+                ray=ray,
                 depth=mi.UInt32(0),
                 δL=None,
                 state_in=None,
@@ -131,7 +131,7 @@ class PSIntegrator(mi.CppADIntegrator):
                         scene=scene,
                         sensor=sensor,
                         sampler=sampler,
-                        ray_in=ray,
+                        ray=ray,
                         active=mi.Bool(True)
                     )
 
@@ -194,7 +194,7 @@ class PSIntegrator(mi.CppADIntegrator):
                         scene=scene,
                         sensor=sensor,
                         sampler=sampler,
-                        ray_in=ray,
+                        ray=ray,
                         active=mi.Bool(True)
                     )
 
@@ -444,7 +444,7 @@ class PSIntegratorPRB(PSIntegrator):
                 scene=scene,
                 sensor=sensor,
                 sampler=sampler.clone(),
-                ray_in=ray,
+                ray=ray,
                 depth=mi.UInt32(0),
                 δL=None,
                 state_in=None,
@@ -457,7 +457,7 @@ class PSIntegratorPRB(PSIntegrator):
                 scene=scene,
                 sensor=sensor,
                 sampler=sampler,
-                ray_in=ray,
+                ray=ray,
                 depth=mi.UInt32(0),
                 δL=None,
                 state_in=state_out,
