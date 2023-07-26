@@ -71,8 +71,8 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
 
         # Record the following loop in its entirety
         loop = mi.Loop(name="Path-Space Diff. Rendering (%s)" % mode.name,
-                       state=lambda: (sampler, ray, depth, L, δL, β, active, pi,
-                                      prev_pi, prev_ray, prev_bsdf_pdf, prev_bsdf_delta))
+                       state=lambda: (sampler, ray, depth, L, δL, β, η, active,
+                                      pi, prev_pi, prev_ray, prev_bsdf_pdf, prev_bsdf_delta))
         loop.set_max_iterations(self.max_depth)
         while loop(active):
             # Enable RayFlags.FollowShape to avoid diff. ray-surface intersect
@@ -94,7 +94,6 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
             )
             with dr.resume_grad(when=not primal):
                 Le = β * mis * ds.emitter.eval(si)
-            # Le = mi.Spectrum(0)
 
             bsdf = si.bsdf(ray)
             # ---------------------- Emitter sampling ----------------------
@@ -107,7 +106,6 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
                 bsdf_value_em, bsdf_pdf_em = bsdf.eval_pdf(bsdf_ctx, si, wo, active_em)
                 mis_em = dr.select(ds.delta, 1, common.mis_weight(ds.pdf, bsdf_pdf_em))
                 Lr_dir = β * mis_em * bsdf_value_em * em_weight * ds.j
-                # Lr_dir = β * bsdf_value_em * em_weight * ds.j
 
             # ------------------ Detached BSDF sampling -------------------
             bsdf_sample, bsdf_weight = bsdf.sample(bsdf_ctx, si,
@@ -122,11 +120,11 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
             prev_bsdf_delta = mi.has_flag(bsdf_sample.sampled_type, mi.BSDFFlags.Delta)
 
             # ---- Update loop variables based on current interaction -----
-            depth[si.is_valid()] += 1
             L = (L + Le + Lr_dir) if primal else (L - Le - Lr_dir)
             ray = si.spawn_ray(si.to_world(bsdf_sample.wo))
             η *= bsdf_sample.eta
             β *= bsdf_weight
+            depth[si.is_valid()] += 1
             pi = scene.ray_intersect_preliminary(ray, coherent=dr.eq(depth, 0))
 
             # ------------------ Differential phase only ------------------
