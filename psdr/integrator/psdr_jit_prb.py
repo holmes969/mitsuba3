@@ -51,7 +51,7 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
                 wi = dr.normalize(dir)
                 val = cam_imp * dr.abs(dr.dot(wi, si.n))
                 imp = dr.select(dr.neq(val, 0), val / dr.detach(val), 0)
-                Lo = imp * L
+                Lo = imp * si.j * L
                 if dr.flag(dr.JitFlag.VCallRecord) and not dr.grad_enabled(Lo):
                     raise Exception(
                         "The contribution computed by the differential "
@@ -71,7 +71,7 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
 
         # Record the following loop in its entirety
         loop = mi.Loop(name="Path-Space Diff. Rendering (%s)" % mode.name,
-                       state=lambda: (sampler, ray, depth, L, β, active, pi,
+                       state=lambda: (sampler, ray, depth, L, δL, β, active, pi,
                                       prev_pi, prev_ray, prev_bsdf_pdf, prev_bsdf_delta))
         loop.set_max_iterations(self.max_depth)
         while loop(active):
@@ -94,6 +94,7 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
             )
             with dr.resume_grad(when=not primal):
                 Le = β * mis * ds.emitter.eval(si)
+            # Le = mi.Spectrum(0)
 
             bsdf = si.bsdf(ray)
             # ---------------------- Emitter sampling ----------------------
@@ -106,6 +107,7 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
                 bsdf_value_em, bsdf_pdf_em = bsdf.eval_pdf(bsdf_ctx, si, wo, active_em)
                 mis_em = dr.select(ds.delta, 1, common.mis_weight(ds.pdf, bsdf_pdf_em))
                 Lr_dir = β * mis_em * bsdf_value_em * em_weight * ds.j
+                # Lr_dir = β * bsdf_value_em * em_weight * ds.j
 
             # ------------------ Detached BSDF sampling -------------------
             bsdf_sample, bsdf_weight = bsdf.sample(bsdf_ctx, si,
@@ -140,8 +142,8 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
                                                  dr.rcp(bsdf_val_det), 0)
                     # Re-evaluate (differentiably) BSDF * cos(theta) * G
                     bsdf_val = bsdf.eval(bsdf_ctx, si, si.to_local(wo), active_next)
-                    geo_term = dr.abs(dr.dot(wo, si.n)) / (dist * dist)
-                    vert_val = bsdf_val * geo_term / dr.detach(geo_term) * si.j
+                    geo_term = dr.abs(dr.dot(wo, si_next.n)) / (dist * dist)
+                    vert_val = bsdf_val * geo_term / dr.detach(geo_term) * si_next.j
                     vert_val = dr.select(dr.neq(vert_val, 0), vert_val, 0)
                     Lr_ind = L * dr.replace_grad(1, inv_bsdf_val_det * vert_val)
                     # Differentiable Monte Carlo estimate of all contributions
