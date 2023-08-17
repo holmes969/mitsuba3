@@ -55,7 +55,7 @@ class PathSpaceJitIntegratorPRB2(common.PSIntegratorPRB):
                 else:
                     first_vertex = dr.eq(depth, 0)
                     second_vertex = dr.eq(depth, 1)
-                    use_switch = True
+                    use_switch = False      # Bug when using Switch
                     with dr.resume_grad():
                         if use_switch:
                             def f(ray, pi):
