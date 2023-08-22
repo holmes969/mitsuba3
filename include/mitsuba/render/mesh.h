@@ -48,6 +48,8 @@ public:
     ScalarSize vertex_count() const { return m_vertex_count; }
     /// Return the total number of faces
     ScalarSize face_count() const { return m_face_count; }
+    /// Return the total number of edges
+    ScalarSize edge_count() const { return m_edge_count; }
 
     /// Return vertex positions buffer
     FloatStorage& vertex_positions_buffer() { return m_vertex_positions; }
@@ -69,6 +71,13 @@ public:
     /// Const variant of \ref faces_buffer.
     const DynamicBuffer<UInt32>& faces_buffer() const { return m_faces; }
 
+    /// Return edge vertex indices buffer
+    DynamicBuffer<UInt32>& edges_buffer_v() { return m_edges_v; }
+    const DynamicBuffer<UInt32>& edges_buffer_v() const { return m_edges_v; }
+    /// Return edge face indices buffer
+    DynamicBuffer<UInt32>& edges_buffer_f() { return m_edges_f; }
+    const DynamicBuffer<UInt32>& edges_buffer_f() const { return m_edges_f; }
+
     /// Return the mesh attribute associated with \c name
     FloatStorage& attribute_buffer(const std::string& name) {
         auto attribute = m_mesh_attributes.find(name);
@@ -87,6 +96,22 @@ public:
                                 dr::mask_t<Index> active = true) const {
         using Result = dr::Array<dr::uint32_array_t<Index>, 3>;
         return dr::gather<Result>(m_faces, index, active);
+    }
+
+    /// Returns the edge vertex indices associated with edge \c index
+    template <typename Index>
+    MI_INLINE auto edge_indices_v(Index index,
+                                  dr::mask_t<Index> active = true) const {
+        using Result = dr::Array<dr::uint32_array_t<Index>, 3>;
+        return dr::gather<Result>(m_edges_v, index, active);
+    }
+
+    /// Returns the edge face indices associated with edge \c index
+    template <typename Index>
+    MI_INLINE auto edge_indices_f(Index index,
+                                  dr::mask_t<Index> active = true) const {
+        using Result = dr::Array<dr::uint32_array_t<Index>, 2>;
+        return dr::gather<Result>(m_edges_f, index, active);
     }
 
     /// Returns the world-space position of the vertex with index \c index
@@ -318,6 +343,13 @@ protected:
      */
     void build_pmf();
 
+
+    /**
+     * \brief Build a edge list storing indices of individual geometric edges
+    */
+   void build_edge();
+
+
     /**
      * \brief Initialize the \c m_parameterization field for mapping UV
      * coordinates to positions
@@ -446,12 +478,15 @@ protected:
 
     ScalarSize m_vertex_count = 0;
     ScalarSize m_face_count = 0;
+    ScalarSize m_edge_count = 0;
 
     mutable FloatStorage m_vertex_positions;
     mutable FloatStorage m_vertex_normals;
     mutable FloatStorage m_vertex_texcoords;
 
     mutable DynamicBuffer<UInt32> m_faces;
+    mutable DynamicBuffer<UInt32> m_edges_v;
+    mutable DynamicBuffer<UInt32> m_edges_f;
 
 #if defined(MI_ENABLE_LLVM) && !defined(MI_ENABLE_EMBREE)
     /* Data pointer to ensure triangle intersection routine doesn't rely on

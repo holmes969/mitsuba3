@@ -8,6 +8,8 @@
 #include <mitsuba/render/mesh.h>
 #include <mitsuba/render/records.h>
 #include <mitsuba/render/scene.h>
+#include <map>
+#include <array>
 
 #if defined(MI_ENABLE_EMBREE)
     #include <embree3/rtcore.h>
@@ -58,6 +60,7 @@ void Mesh<Float, Spectrum>::initialize() {
 #endif
     if (m_emitter || m_sensor)
         ensure_pmf_built();
+    build_edge();
     mark_dirty();
     Base::initialize();
 }
@@ -70,6 +73,8 @@ MI_VARIANT void Mesh<Float, Spectrum>::traverse(TraversalCallback *callback) {
     callback->put_parameter("vertex_count",     m_vertex_count,     +ParamFlags::NonDifferentiable);
     callback->put_parameter("face_count",       m_face_count,       +ParamFlags::NonDifferentiable);
     callback->put_parameter("faces",            m_faces,            +ParamFlags::NonDifferentiable);
+    callback->put_parameter("edges_v",          m_edges_v,          +ParamFlags::NonDifferentiable);
+    callback->put_parameter("edges_f",          m_edges_f,          +ParamFlags::NonDifferentiable);
     callback->put_parameter("vertex_positions", m_vertex_positions, ParamFlags::Differentiable | ParamFlags::Discontinuous);
     callback->put_parameter("vertex_normals",   m_vertex_normals,   ParamFlags::Differentiable | ParamFlags::Discontinuous);
     callback->put_parameter("vertex_texcoords", m_vertex_texcoords, +ParamFlags::Differentiable);
@@ -398,6 +403,56 @@ MI_VARIANT void Mesh<Float, Spectrum>::build_pmf() {
         table.data(),
         m_face_count
     );
+}
+
+MI_VARIANT void Mesh<Float, Spectrum>::build_edge() {
+ 
+    std::lock_guard<std::mutex> lock(m_mutex);
+    if (m_face_count == 0)
+        Throw("Cannot create sampling table for an empty mesh: %s", to_string());
+
+    auto&& faces = dr::migrate(m_faces, AllocType::Host);
+    if constexpr (dr::is_jit_v<Float>)
+        dr::sync_thread();
+    const ScalarIndex *idx_p = faces.data();
+    
+    // construct edge indices
+    using ScalarIndex2 = std::array<ScalarIndex, 2>;
+    using ScalarIndex3 = std::array<ScalarIndex, 3>;
+    std::map<ScalarIndex2, ScalarIndex3> edge_map;
+    for (size_t i = 0; i < m_face_count; i++) {
+        ScalarPoint3u tri = dr::load<ScalarPoint3u>(idx_p + 3 * i);
+        for (size_t j = 0; j < 3; j++) {
+            ScalarIndex idx_0 = tri[j];
+            ScalarIndex idx_1 = tri[(j+1) % 3];
+            ScalarIndex idx_2 = tri[(j+2) % 3];
+            auto key = (idx_0 < idx_1) ? ScalarIndex2{{idx_0, idx_1}} : ScalarIndex2{{idx_1, idx_0}};
+            if (edge_map.find(key) == edge_map.end()) {
+                edge_map.insert({key, ScalarIndex3{ {idx_2, ScalarIndex(i), 0} }});
+            } else {
+                if (unlikely(edge_map[key][2] != 0))
+                    Throw("build_edge(): Non-manifold mesh - edge (%i, %i) shared by more than two triangles!", key[0], key[1]);
+                // Hack: to store as ScalarIndex, index stored in edge_map.value[2] are offset by +1
+                edge_map[key][2] = ScalarIndex(i + 1);
+            }
+        }
+    }
+    m_edge_count = ScalarSize(edge_map.size());
+    std::vector<ScalarIndex3> edges_v;
+    std::vector<ScalarIndex2> edges_f;
+    edges_v.reserve(m_edge_count);
+    edges_f.reserve(m_edge_count);
+    for (auto& it : edge_map) {
+        // (smaller) index of edge vertex
+        // (larger) index of edge vertex
+        // index of neighboring vertex on A
+        edges_v.push_back({{it.first[0], it.first[1], it.second[0]}});
+        // index of neighboring face A
+        // index of neighboring face B (if exists)
+        edges_f.push_back({{it.second[0], it.second[1]}});
+    }
+    m_edges_v = dr::load<DynamicBuffer<UInt32>>(edges_v.data(), m_edge_count * 3);
+    m_edges_f = dr::load<DynamicBuffer<UInt32>>(edges_f.data(), m_edge_count * 2);
 }
 
 MI_VARIANT

@@ -177,6 +177,7 @@ MI_PY_EXPORT(Shape) {
         .def_method(Mesh, initialize)
         .def_method(Mesh, vertex_count)
         .def_method(Mesh, face_count)
+        .def_method(Mesh, edge_count)
         .def_method(Mesh, has_vertex_normals)
         .def_method(Mesh, has_vertex_texcoords)
         .def("write_ply",
@@ -199,6 +200,12 @@ MI_PY_EXPORT(Shape) {
         .def("face_indices", [](const Mesh &m, UInt32 index, Mask active) {
                 return m.face_indices(index, active);
              }, D(Mesh, face_indices), "index"_a, "active"_a = true)
+        .def("edge_indices_v", [](const Mesh &m, UInt32 index, Mask active) {
+                return m.edge_indices_v(index, active);
+             }, D(Mesh, edge_indices_v), "index"_a, "active"_a = true)
+        .def("edge_indices_f", [](const Mesh &m, UInt32 index, Mask active) {
+                return m.edge_indices_f(index, active);
+             }, D(Mesh, edge_indices_f), "index"_a, "active"_a = true)
         .def("ray_intersect_triangle", &Mesh::ray_intersect_triangle,
              "index"_a, "ray"_a, "active"_a = true,
              D(Mesh, ray_intersect_triangle));

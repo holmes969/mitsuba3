@@ -4372,9 +4372,15 @@ static const char *__doc_mitsuba_Mesh_eval_parameterization = R"doc()doc";
 
 static const char *__doc_mitsuba_Mesh_face_count = R"doc(Return the total number of faces)doc";
 
+static const char *__doc_mitsuba_Mesh_edge_count = R"doc(Return the total number of edges)doc";
+
 static const char *__doc_mitsuba_Mesh_face_data_bytes = R"doc()doc";
 
 static const char *__doc_mitsuba_Mesh_face_indices = R"doc(Returns the face indices associated with triangle ``index``)doc";
+
+static const char *__doc_mitsuba_Mesh_edge_indices_v = R"doc(Returns the edge vertex indices associated with edge ``index``)doc";
+
+static const char *__doc_mitsuba_Mesh_edge_indices_f = R"doc(Returns the edge face indices associated with edge ``index``)doc";
 
 static const char *__doc_mitsuba_Mesh_faces_buffer = R"doc(Return face indices buffer)doc";
 
