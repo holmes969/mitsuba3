@@ -332,6 +332,47 @@ MI_VARIANT Spectrum Scene<Float, Spectrum>::eval_emitter_direction(
     return ds.emitter->eval_direction(ref, ds, active);
 }
 
+MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
+    m_edges.edge_count = 0;
+    for (auto&s : m_shapes) {
+        if (s->is_mesh()) {
+            const Mesh *m = (const Mesh *) s.get();
+            m_edges.edge_count += m->edge_count();
+        }
+    }
+    m_edges.initialize();
+    
+    for (auto &s : m_shapes) {
+        uint32_t offset = 0;
+        if (s->is_mesh()) {
+            const Mesh *m = (const Mesh *) s.get();
+            auto v = m->vertex_positions_buffer();
+            uint32_t num_edges = m->edge_count();
+            UInt32 idx = dr::arange<UInt32>(offset, offset + num_edges);
+            // write to edge vertices
+            const auto& idx_v = m->edges_buffer_v();
+            std::cout << idx_v << std::endl;
+            std::cout << "-----------------------" << std::endl;
+            
+            
+            // Point3f p0 = dr::gather<Point3f>(v, idx_v[0]);
+            // Point3f p0 = m->vertex_position(idx_v[0]);
+            // Point3f p1 = m->vertex_position(idx_v[1]);
+            // Point3f p2 = m->vertex_position(idx_v[2]);
+            // for(int i = 0; i < 3; i++) {
+            //     dr::scatter(m_edges.p0[i], p0[i], idx);
+            //     dr::scatter(m_edges.p1[i], p1[i], idx);
+            //     dr::scatter(m_edges.p2[i], p2[i], idx);
+            // }
+            // // write to edge face normals
+            // const auto& idx_f = m->edges_buffer_f();
+
+
+            offset += num_edges;
+        }
+    }
+}
+
 MI_VARIANT void Scene<Float, Spectrum>::traverse(TraversalCallback *callback) {
     for (auto& child : m_children) {
         std::string id = child->id();

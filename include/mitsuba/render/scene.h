@@ -6,6 +6,7 @@
 #include <mitsuba/render/shapegroup.h>
 #include <mitsuba/render/fwd.h>
 #include <mitsuba/render/sensor.h>
+#include <mitsuba/render/edge.h>
 
 NAMESPACE_BEGIN(mitsuba)
 
@@ -443,6 +444,11 @@ public:
                                     const DirectionSample3f &ds,
                                     Mask active = true) const;
 
+    /**
+     * \brief Build a list to store the information of geometric edges in the scene
+    */
+    void build_geometric_edges() const;
+
     //! @}
     // =============================================================
 
@@ -577,6 +583,8 @@ protected:
     ref<Emitter> m_environment;
     ScalarFloat m_emitter_pmf;
     std::unique_ptr<DiscreteDistribution<Float>> m_emitter_distr = nullptr;
+
+    mutable GeometricEdge<Float> m_edges;
 
     bool m_shapes_grad_enabled;
 };
