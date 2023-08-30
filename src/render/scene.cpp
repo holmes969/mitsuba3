@@ -342,31 +342,28 @@ MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
     }
     m_edges.initialize();
     
+    uint32_t offset = 0;
     for (auto &s : m_shapes) {
-        uint32_t offset = 0;
         if (s->is_mesh()) {
             const Mesh *m = (const Mesh *) s.get();
             auto v = m->vertex_positions_buffer();
             uint32_t num_edges = m->edge_count();
-            UInt32 idx = dr::arange<UInt32>(offset, offset + num_edges);
-            // write to edge vertices
-            const auto& idx_v = m->edges_buffer_v();
-            std::cout << idx_v << std::endl;
-            std::cout << "-----------------------" << std::endl;
-            
-            
-            // Point3f p0 = dr::gather<Point3f>(v, idx_v[0]);
-            // Point3f p0 = m->vertex_position(idx_v[0]);
-            // Point3f p1 = m->vertex_position(idx_v[1]);
-            // Point3f p2 = m->vertex_position(idx_v[2]);
-            // for(int i = 0; i < 3; i++) {
-            //     dr::scatter(m_edges.p0[i], p0[i], idx);
-            //     dr::scatter(m_edges.p1[i], p1[i], idx);
-            //     dr::scatter(m_edges.p2[i], p2[i], idx);
-            // }
-            // // write to edge face normals
-            // const auto& idx_f = m->edges_buffer_f();
+            UInt32 idx_in = dr::arange<UInt32>(0, num_edges);
+            UInt32 idx_out = dr::arange<UInt32>(offset, offset + num_edges);
 
+            // write to edge vertices
+            const Vector3u idx_v = m->edge_indices_v(idx_in);       // CZ: is there a way to convert DynamicBuffer<UInt32> to Vector3u rather than using gather?
+            Point3f p0 = dr::gather<Point3f>(v, idx_v[0]);
+            Point3f p1 = dr::gather<Point3f>(v, idx_v[1]);
+            Point3f p2 = dr::gather<Point3f>(v, idx_v[2]);
+            // dr::scatter(m_edges.p0, p0, idx_out);               //CZ: array_router.h(1083,41): error C2338: static_assert failed: 'Second argument of gather operation must be an index array!'
+
+            // CZ: array_router.h(1111,18): error C2440: 'type cast': cannot convert from 'Value_' to 'Value *'
+            for(int i = 0; i < 3; i++) {
+                dr::scatter(m_edges.p0[i], p0[i], idx_out);
+                dr::scatter(m_edges.p1[i], p1[i], idx_out);
+                dr::scatter(m_edges.p2[i], p2[i], idx_out);
+            }
 
             offset += num_edges;
         }
