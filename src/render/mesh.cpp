@@ -449,7 +449,7 @@ MI_VARIANT void Mesh<Float, Spectrum>::build_edge() {
         edges_v.push_back({{it.first[0], it.first[1], it.second[0]}});
         // index of neighboring face A
         // index of neighboring face B (if exists)
-        edges_f.push_back({{it.second[0], it.second[1]}});
+        edges_f.push_back({{it.second[1], it.second[2]}});
     }
     m_edges_v = dr::load<DynamicBuffer<UInt32>>(edges_v.data(), m_edge_count * 3);
     m_edges_f = dr::load<DynamicBuffer<UInt32>>(edges_f.data(), m_edge_count * 2);

@@ -448,6 +448,7 @@ public:
      * \brief Build a list to store the information of geometric edges in the scene
     */
     void build_geometric_edges() const;
+    const GeometricEdge<Float> edges() const { return m_edges; } 
 
     //! @}
     // =============================================================

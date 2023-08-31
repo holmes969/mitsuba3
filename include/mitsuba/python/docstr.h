@@ -6455,6 +6455,8 @@ static const char *__doc_mitsuba_Scene_environment = R"doc(Return the environmen
 
 static const char *__doc_mitsuba_Scene_build_geometric_edges = R"doc(Build a list to store the information of geometric edges in the scene)doc";
 
+static const char *__doc_mitsuba_Scene_edges = R"doc(Return the list containing geometric edges in the scene)doc";
+
 static const char *__doc_mitsuba_Scene_eval_emitter_direction =
 R"doc(Re-evaluate the incident direct radiance of the
 sample_emitter_direction() method.

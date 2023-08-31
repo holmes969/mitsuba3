@@ -333,11 +333,11 @@ MI_VARIANT Spectrum Scene<Float, Spectrum>::eval_emitter_direction(
 }
 
 MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
-    m_edges.edge_count = 0;
+    m_edges.count = 0;
     for (auto&s : m_shapes) {
         if (s->is_mesh()) {
             const Mesh *m = (const Mesh *) s.get();
-            m_edges.edge_count += m->edge_count();
+            m_edges.count += m->edge_count();
         }
     }
     m_edges.initialize();
@@ -346,28 +346,52 @@ MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
     for (auto &s : m_shapes) {
         if (s->is_mesh()) {
             const Mesh *m = (const Mesh *) s.get();
-            auto v = m->vertex_positions_buffer();
+            // auto v = m->vertex_positions_buffer();
             uint32_t num_edges = m->edge_count();
             UInt32 idx_in = dr::arange<UInt32>(0, num_edges);
             UInt32 idx_out = dr::arange<UInt32>(offset, offset + num_edges);
-
             // write to edge vertices
             const Vector3u idx_v = m->edge_indices_v(idx_in);       // CZ: is there a way to convert DynamicBuffer<UInt32> to Vector3u rather than using gather?
-            Point3f p0 = dr::gather<Point3f>(v, idx_v[0]);
-            Point3f p1 = dr::gather<Point3f>(v, idx_v[1]);
-            Point3f p2 = dr::gather<Point3f>(v, idx_v[2]);
-            // dr::scatter(m_edges.p0, p0, idx_out);               //CZ: array_router.h(1083,41): error C2338: static_assert failed: 'Second argument of gather operation must be an index array!'
-
-            // CZ: array_router.h(1111,18): error C2440: 'type cast': cannot convert from 'Value_' to 'Value *'
-            for(int i = 0; i < 3; i++) {
-                dr::scatter(m_edges.p0[i], p0[i], idx_out);
-                dr::scatter(m_edges.p1[i], p1[i], idx_out);
-                dr::scatter(m_edges.p2[i], p2[i], idx_out);
+            Point3f p0 = m->vertex_position(idx_v[0]);
+            Point3f p1 = m->vertex_position(idx_v[1]);
+            Point3f p2 = m->vertex_position(idx_v[2]);
+            if constexpr (dr::is_jit_v<Float>) {
+                dr::scatter(m_edges.p0, p0, idx_out);
+                dr::scatter(m_edges.p1, p1, idx_out);
+                dr::scatter(m_edges.p2, p2, idx_out);
             }
-
+            // write to face normal
+            const Vector2u idx_f = m->edge_indices_f(idx_in);
+            if constexpr (dr::is_jit_v<Float>) {
+                auto get_face_normal = [idx_f, &m](const Vector3u& fi) {
+                    Point3f v0 = m->vertex_position(fi[0]);
+                    Point3f v1 = m->vertex_position(fi[1]);
+                    Point3f v2 = m->vertex_position(fi[2]);
+                    return dr::normalize(dr::cross(v1-v0, v2-v0));
+                };
+                // first neighboring face
+                Vector3u fi_0 = m->face_indices(idx_f[0], true);
+                Normal3f n0 = get_face_normal(fi_0);
+                dr::scatter(m_edges.n0, n0, idx_out);
+                // second neighboring face (if exist)
+                Mask boundary = dr::eq(idx_f[1], 0);
+                dr::scatter(m_edges.boundary, boundary, idx_out);
+                Vector3u fi_1 = m->face_indices(idx_f[1] - dr::select(boundary, 0, 1));
+                Normal3f n1 = dr::select(boundary, 0.0, get_face_normal(fi_1));
+                dr::scatter(m_edges.n1, n1, idx_out);
+            }
             offset += num_edges;
-        }
+        }        
     }
+    // remove concave edges (including coplanar)
+    Vector3f e = dr::normalize(m_edges.p2 - m_edges.p0);
+    Mask valid = m_edges.boundary |
+                    dr::dot(e, m_edges.n0) < -math::EdgeEpsilon<Float>;
+    // std::cout << "Before:" << m_edges.count << std::endl;
+    m_edges.count = dr::count(valid);
+    m_edges = dr::gather<GeometricEdge<Float>>(m_edges, dr::compress(valid));
+    // std::cout << "After:" << m_edges.count << std::endl;
+    // std::cout << m_edges.p0 << std::endl;
 }
 
 MI_VARIANT void Scene<Float, Spectrum>::traverse(TraversalCallback *callback) {
