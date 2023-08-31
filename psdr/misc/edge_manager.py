@@ -23,5 +23,5 @@ scene_fn = 'cbox_bunny.xml'
 scene_path = os.path.join(scene_dir, scene_fn)
 sc = mi.load_file(scene_path, integrator='path', max_depth=max_depth)
 sc.build_geometric_edges()
-# e = sc.edges()
+e = sc.edges()
 print("Done")

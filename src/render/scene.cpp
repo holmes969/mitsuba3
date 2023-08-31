@@ -385,13 +385,12 @@ MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
     }
     // remove concave edges (including coplanar)
     Vector3f e = dr::normalize(m_edges.p2 - m_edges.p0);
-    Mask valid = m_edges.boundary |
-                    dr::dot(e, m_edges.n0) < -math::EdgeEpsilon<Float>;
-    // std::cout << "Before:" << m_edges.count << std::endl;
-    m_edges.count = dr::count(valid);
-    m_edges = dr::gather<GeometricEdge<Float>>(m_edges, dr::compress(valid));
-    // std::cout << "After:" << m_edges.count << std::endl;
-    // std::cout << m_edges.p0 << std::endl;
+    Mask valid = m_edges.boundary | (dr::dot(e, m_edges.n1) < -math::EdgeEpsilon<Float>);
+    if constexpr (dr::is_jit_v<Float>) {
+        auto valid_index = dr::compress(valid);
+        m_edges = dr::gather<GeometricEdge<Float>>(m_edges, valid_index);
+        m_edges.count = valid_index.size();
+    }
 }
 
 MI_VARIANT void Scene<Float, Spectrum>::traverse(TraversalCallback *callback) {

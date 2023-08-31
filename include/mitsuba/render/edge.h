@@ -2,6 +2,7 @@
 #include <mitsuba/core/struct.h>
 #include <mitsuba/render/fwd.h>
 #include <drjit/struct.h>
+#include <mitsuba/core/vector.h>
 
 NAMESPACE_BEGIN(mitsuba)
 
