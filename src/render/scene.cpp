@@ -333,14 +333,14 @@ MI_VARIANT Spectrum Scene<Float, Spectrum>::eval_emitter_direction(
 }
 
 MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
-    m_edges.count = 0;
+    m_edge_manager.count = 0;
     for (auto&s : m_shapes) {
         if (s->is_mesh()) {
             const Mesh *m = (const Mesh *) s.get();
-            m_edges.count += m->edge_count();
+            m_edge_manager.count += m->edge_count();
         }
     }
-    m_edges.initialize();
+    m_edge_manager.initialize();
     
     uint32_t offset = 0;
     for (auto &s : m_shapes) {
@@ -356,9 +356,9 @@ MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
             Point3f p1 = m->vertex_position(idx_v[1]);
             Point3f p2 = m->vertex_position(idx_v[2]);
             if constexpr (dr::is_jit_v<Float>) {
-                dr::scatter(m_edges.p0, p0, idx_out);
-                dr::scatter(m_edges.p1, p1, idx_out);
-                dr::scatter(m_edges.p2, p2, idx_out);
+                dr::scatter(m_edge_manager.p0, p0, idx_out);
+                dr::scatter(m_edge_manager.p1, p1, idx_out);
+                dr::scatter(m_edge_manager.p2, p2, idx_out);
             }
             // write to face normal
             const Vector2u idx_f = m->edge_indices_f(idx_in);
@@ -372,25 +372,26 @@ MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
                 // first neighboring face
                 Vector3u fi_0 = m->face_indices(idx_f[0], true);
                 Normal3f n0 = get_face_normal(fi_0);
-                dr::scatter(m_edges.n0, n0, idx_out);
+                dr::scatter(m_edge_manager.n0, n0, idx_out);
                 // second neighboring face (if exist)
                 Mask boundary = dr::eq(idx_f[1], 0);
-                dr::scatter(m_edges.boundary, boundary, idx_out);
+                dr::scatter(m_edge_manager.boundary, boundary, idx_out);
                 Vector3u fi_1 = m->face_indices(idx_f[1] - dr::select(boundary, 0, 1));
                 Normal3f n1 = dr::select(boundary, 0.0, get_face_normal(fi_1));
-                dr::scatter(m_edges.n1, n1, idx_out);
+                dr::scatter(m_edge_manager.n1, n1, idx_out);
             }
             offset += num_edges;
-        }        
+        }
     }
     // remove concave edges (including coplanar)
-    Vector3f e = dr::normalize(m_edges.p2 - m_edges.p0);
-    Mask valid = m_edges.boundary | (dr::dot(e, m_edges.n1) < -math::EdgeEpsilon<Float>);
+    Vector3f e = dr::normalize(m_edge_manager.p2 - m_edge_manager.p0);
+    Mask valid = m_edge_manager.boundary | (dr::dot(e, m_edge_manager.n1) < -math::EdgeEpsilon<Float>);
     if constexpr (dr::is_jit_v<Float>) {
         auto valid_index = dr::compress(valid);
-        m_edges = dr::gather<GeometricEdge<Float>>(m_edges, valid_index);
-        m_edges.count = valid_index.size();
+        m_edge_manager = dr::gather<EdgeManager<Float>>(m_edge_manager, valid_index);
+        m_edge_manager.count = valid_index.size();
     }
+
 }
 
 MI_VARIANT void Scene<Float, Spectrum>::traverse(TraversalCallback *callback) {

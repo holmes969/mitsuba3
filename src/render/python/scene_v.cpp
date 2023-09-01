@@ -77,7 +77,7 @@ MI_PY_EXPORT(Scene) {
              "ref"_a, "ds"_a, "active"_a = true, D(Scene, eval_emitter_direction))
         .def("build_geometric_edges", &Scene::build_geometric_edges,
              D(Scene, build_geometric_edges))
-        .def("edges", &Scene::edges, D(Scene, edges))
+        .def("edge_manager", &Scene::edge_manager, D(Scene, edge_manager))
         .def("sample_emitter_ray", &Scene::sample_emitter_ray,
              "time"_a, "sample1"_a, "sample2"_a, "sample3"_a, "active"_a,
              D(Scene, sample_emitter_ray))

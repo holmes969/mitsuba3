@@ -444,11 +444,12 @@ public:
                                     const DirectionSample3f &ds,
                                     Mask active = true) const;
 
-    /**
-     * \brief Build a list to store the information of geometric edges in the scene
-    */
+
+    /// Build a list to store the information of geometric edges in the scene
     void build_geometric_edges() const;
-    const GeometricEdge<Float> edges() const { return m_edges; } 
+    
+    /// Return edge list
+    const EdgeManager<Float> edge_manager() const { return m_edge_manager; }
 
     //! @}
     // =============================================================
@@ -585,7 +586,7 @@ protected:
     ScalarFloat m_emitter_pmf;
     std::unique_ptr<DiscreteDistribution<Float>> m_emitter_distr = nullptr;
 
-    mutable GeometricEdge<Float> m_edges;
+    mutable EdgeManager<Float> m_edge_manager;
 
     bool m_shapes_grad_enabled;
 };
