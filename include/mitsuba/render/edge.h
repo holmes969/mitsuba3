@@ -13,23 +13,17 @@ struct EdgeManager
     using Float    = Float_;
     MI_IMPORT_CORE_TYPES();
 
-    void initialize() {
+    void resize(size_t num_edges) {
+        count = num_edges;
         p0 = dr::empty<Point3f>(count);
         p1 = dr::empty<Point3f>(count);
         n0 = dr::empty<Normal3f>(count);
         n1 = dr::empty<Normal3f>(count);
         p2 = dr::empty<Point3f>(count);
         boundary = dr::empty<Mask>(count);
-    }
-
-    void initialize_distr() {
-        // auto edge_length = dr::norm(p1 - p0);       // sampling from edge length
-        // if constexpr (dr::is_jit_v<Float>) {
-        //     // m_edge_distr = std::make_unique<DiscreteDistribution<Float>>(edge_length, m_edges.count);
-        //     // auto&& data = dr::gather<DynamicBuffer<Float>>(edge_length, dr::arange<UInt32>(0, m_edges.count));
-        //     // m_edge_distr = std::make_unique<DiscreteDistribution<Float>>(data, m_edges.count);
-        //     // m_distr = std::make_unique<DiscreteDistribution<Float>>();
-        // }
+        distr = nullptr;
+        pr_distr.clear();
+        pr_idx.clear();
     }
 
     Mask boundary;
@@ -38,11 +32,10 @@ struct EdgeManager
     Point3f p2;
     size_t count;
     // Distribution for direct/indirect boundary
-    // std::unique_ptr<DiscreteDistribution<Float>> m_distr = nullptr;
+    std::unique_ptr<DiscreteDistribution<Float>> distr = nullptr;
     // Distribution for primary boundary
-
-
-    DRJIT_STRUCT(EdgeManager, boundary, p0, p1, n0, n1, p2)
+    std::vector<std::unique_ptr<DiscreteDistribution<Float>>> pr_distr;
+    std::vector<UInt32> pr_idx;
 };
 
 template <typename Float_>

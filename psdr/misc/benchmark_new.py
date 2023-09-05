@@ -40,7 +40,7 @@ result_dir = '../results/'
 
 if pbdr_sys == 'mitsuba':
     scene_path = os.path.join(scene_dir, scene_fn)
-    sc = mi.load_file(scene_path, integrator='psdr_jit_prb2', max_depth=max_depth)
+    sc = mi.load_file(scene_path, integrator='psdr_jit_prb', max_depth=max_depth)
 elif pbdr_sys == 'psdr':
     curr_dir = os. getcwd()
     os.chdir(scene_dir)

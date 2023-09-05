@@ -449,7 +449,7 @@ public:
     void build_geometric_edges() const;
     
     /// Return edge list
-    const EdgeManager<Float> edge_manager() const { return m_edge_manager; }
+    const EdgeManager<Float> &edge_manager() const { return m_edge_manager; }
 
     //! @}
     // =============================================================

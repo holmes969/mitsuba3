@@ -333,14 +333,15 @@ MI_VARIANT Spectrum Scene<Float, Spectrum>::eval_emitter_direction(
 }
 
 MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
-    m_edge_manager.count = 0;
+    size_t num_tot_edges = 0;
+    auto& em = m_edge_manager;
     for (auto&s : m_shapes) {
         if (s->is_mesh()) {
             const Mesh *m = (const Mesh *) s.get();
-            m_edge_manager.count += m->edge_count();
+            num_tot_edges += m->edge_count();
         }
     }
-    m_edge_manager.initialize();
+    em.resize(num_tot_edges);
     
     uint32_t offset = 0;
     for (auto &s : m_shapes) {
@@ -356,9 +357,9 @@ MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
             Point3f p1 = m->vertex_position(idx_v[1]);
             Point3f p2 = m->vertex_position(idx_v[2]);
             if constexpr (dr::is_jit_v<Float>) {
-                dr::scatter(m_edge_manager.p0, p0, idx_out);
-                dr::scatter(m_edge_manager.p1, p1, idx_out);
-                dr::scatter(m_edge_manager.p2, p2, idx_out);
+                dr::scatter(em.p0, p0, idx_out);
+                dr::scatter(em.p1, p1, idx_out);
+                dr::scatter(em.p2, p2, idx_out);
             }
             // write to face normal
             const Vector2u idx_f = m->edge_indices_f(idx_in);
@@ -372,26 +373,50 @@ MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
                 // first neighboring face
                 Vector3u fi_0 = m->face_indices(idx_f[0], true);
                 Normal3f n0 = get_face_normal(fi_0);
-                dr::scatter(m_edge_manager.n0, n0, idx_out);
+                dr::scatter(em.n0, n0, idx_out);
                 // second neighboring face (if exist)
                 Mask boundary = dr::eq(idx_f[1], 0);
-                dr::scatter(m_edge_manager.boundary, boundary, idx_out);
+                dr::scatter(em.boundary, boundary, idx_out);
                 Vector3u fi_1 = m->face_indices(idx_f[1] - dr::select(boundary, 0, 1));
                 Normal3f n1 = dr::select(boundary, 0.0, get_face_normal(fi_1));
-                dr::scatter(m_edge_manager.n1, n1, idx_out);
+                dr::scatter(em.n1, n1, idx_out);
             }
             offset += num_edges;
         }
     }
     // remove concave edges (including coplanar)
-    Vector3f e = dr::normalize(m_edge_manager.p2 - m_edge_manager.p0);
-    Mask valid = m_edge_manager.boundary | (dr::dot(e, m_edge_manager.n1) < -math::EdgeEpsilon<Float>);
+    Vector3f e = dr::normalize(em.p2 - em.p0);
     if constexpr (dr::is_jit_v<Float>) {
+        Mask valid = em.boundary | (dr::dot(e, em.n1) < -math::EdgeEpsilon<Float>);
         auto valid_index = dr::compress(valid);
-        m_edge_manager = dr::gather<EdgeManager<Float>>(m_edge_manager, valid_index);
-        m_edge_manager.count = valid_index.size();
+        em.p0 = dr::gather<Point3f>(em.p0, valid_index);
+        em.p1 = dr::gather<Point3f>(em.p1, valid_index);
+        em.p2 = dr::gather<Point3f>(em.p2, valid_index);
+        em.n0 = dr::gather<Normal3f>(em.n0, valid_index);
+        em.n1 = dr::gather<Normal3f>(em.n1, valid_index);
+        em.boundary = dr::gather<Mask>(em.boundary, valid_index);
+        em.count = valid_index.size();
     }
-
+    
+    auto edge_length = dr::detach(dr::norm(em.p1 - em.p0));       // sampling from edge length
+    // initialize distribution for direct/indirect boundary terms 
+    em.distr = std::make_unique<DiscreteDistribution<Float>>(edge_length);
+    // initialzie distribution for primary boundary term (per sensor)
+    em.pr_distr.resize(m_sensors.size());
+    em.pr_idx.resize(m_sensors.size());
+    for (size_t i = 0; i < m_sensors.size(); i++) {
+        const Sensor* sensor = m_sensors[i].get();
+        auto cam_pos = sensor->world_transform().translation();
+        // remove invalid edges
+        Vector3f d = cam_pos - em.p0;
+        auto front_facing_0 = dr::dot(d, em.n0);
+        auto front_facing_1 = dr::dot(d, em.n1);
+        if constexpr (dr::is_jit_v<Float>) {
+            Mask valid = dr::neq(front_facing_0, front_facing_1) | em.boundary;
+            em.pr_idx[i] = dr::compress(valid);
+            em.pr_distr[i] = std::make_unique<DiscreteDistribution<Float>>(dr::gather<Float>(edge_length, em.pr_idx[i]));
+        }
+    }
 }
 
 MI_VARIANT void Scene<Float, Spectrum>::traverse(TraversalCallback *callback) {
