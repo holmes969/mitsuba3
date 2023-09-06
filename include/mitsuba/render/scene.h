@@ -451,6 +451,30 @@ public:
     /// Return edge list
     const EdgeManager<Float> &edge_manager() const { return m_edge_manager; }
 
+    /**
+     * \brief Sample edge ray for boundary term evaluation
+     *
+     * This function first samples a point on the geometric edge (primary/direct/indirect)
+     * or a point on the pixel boundary (pixel), then samples a valid direction
+     * (direct/indirect) if necessary.
+     *
+     * \param sample1
+     *    A uniformly distributed 1D value that is used to sample the point
+     *
+     * \param sample2
+     *    A uniformly distributed sample on the domain <tt>[0,1]^2</tt> to sample the direction
+     *
+     * \param mode
+     *    To select from different sampling strategies determined by the type (pixel/primary/direct/indirect) of the boundary term.
+     * 
+     * \param cam_id
+     *    To select camera for evaluating pixel/primary boundary term
+     * 
+     * \return Sampled result
+     */
+
+    EdgeSample<Float> sample_edge_ray(Float sample1, const Point2f &sample2, uint32_t boundary_flags, uint32_t cam_id) const;
+
     //! @}
     // =============================================================
 

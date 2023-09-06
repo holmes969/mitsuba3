@@ -46,9 +46,24 @@ struct EdgeSample
 
     Point3f p;
     Vector3f d;
+    Float pdf;
 
     DRJIT_STRUCT(EdgeSample, p, d)
 };
+
+enum class BoundaryFlags : uint32_t {
+    /// Primary boundary
+    Pixel = 0x0,
+    /// Pixel boundary
+    Primary = 0x1,
+    /// Direct boundary
+    Direct = 0x2,
+    /// Indirect boundary
+    Indirect = 0x3,
+    
+};
+MI_DECLARE_ENUM_OPERATORS(BoundaryFlags)
+
 
 NAMESPACE_END(mitsuba)
 

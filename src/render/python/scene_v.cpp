@@ -78,6 +78,8 @@ MI_PY_EXPORT(Scene) {
         .def("build_geometric_edges", &Scene::build_geometric_edges,
              D(Scene, build_geometric_edges))
         .def("edge_manager", &Scene::edge_manager, D(Scene, edge_manager))
+        .def("sample_edge_ray", &Scene::sample_edge_ray,
+            "sample1"_a, "sample2"_a, "bflag"_a, "cam_id"_a = 0)
         .def("sample_emitter_ray", &Scene::sample_emitter_ray,
              "time"_a, "sample1"_a, "sample2"_a, "sample3"_a, "active"_a,
              D(Scene, sample_emitter_ray))

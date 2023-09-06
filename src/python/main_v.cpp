@@ -113,6 +113,7 @@ MI_PY_DECLARE(Texture);
 MI_PY_DECLARE(Volume);
 MI_PY_DECLARE(VolumeGrid);
 MI_PY_DECLARE(EdgeManager);
+MI_PY_DECLARE(EdgeSample);
 
 #define MODULE_NAME MI_MODULE_NAME(mitsuba, MI_VARIANT_NAME)
 
@@ -207,6 +208,7 @@ PYBIND11_MODULE(MODULE_NAME, m) {
     MI_PY_IMPORT(Volume);
     MI_PY_IMPORT(VolumeGrid);
     MI_PY_IMPORT(EdgeManager);
+    MI_PY_IMPORT(EdgeSample);
 
     py::object mitsuba_ext = py::module::import("mitsuba.mitsuba_ext");
     cast_object = (Caster) (void *)((py::capsule) mitsuba_ext.attr("cast_object"));

@@ -419,6 +419,30 @@ MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
     }
 }
 
+MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_ray(Float sample1,
+                                                                     const Point2f &sample2,
+                                                                     uint32_t boundary_flags,
+                                                                     uint32_t cam_id) const
+{
+    EdgeSample<Float> res;
+    auto& em = m_edge_manager;
+    if (has_flag(boundary_flags, BoundaryFlags::Pixel)) {
+        // pixel boundary: sample on pixel boundary
+
+    } else {
+        // primary/direct/indirect boundary: sample on geometric edge
+        if (has_flag(boundary_flags, BoundaryFlags::Primary)) {
+            auto [pr_index, reused_sample, pmf] = em.pr_distr[cam_id]->sample_reuse_pmf(sample1);
+            UInt32 index = dr::gather<UInt32>(em.pr_idx[cam_id], pr_index);
+            auto p0 = dr::gather<Point3f>(em.p0, index);
+            auto p1 = dr::gather<Point3f>(em.p1, index);
+            res.p = p0 + reused_sample * p1;
+        }
+    }
+
+    return res;
+}
+
 MI_VARIANT void Scene<Float, Spectrum>::traverse(TraversalCallback *callback) {
     for (auto& child : m_children) {
         std::string id = child->id();
