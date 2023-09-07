@@ -409,8 +409,8 @@ MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
         auto cam_pos = sensor->world_transform().translation();
         // remove invalid edges
         Vector3f d = cam_pos - em.p0;
-        auto front_facing_0 = dr::dot(d, em.n0);
-        auto front_facing_1 = dr::dot(d, em.n1);
+        auto front_facing_0 = dr::dot(d, em.n0) > 0.f;
+        auto front_facing_1 = dr::dot(d, em.n1) > 0.f;
         if constexpr (dr::is_jit_v<Float>) {
             Mask valid = dr::neq(front_facing_0, front_facing_1) | em.boundary;
             em.pr_idx[i] = dr::compress(valid);
@@ -431,12 +431,47 @@ MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_ray(Float sampl
 
     } else {
         // primary/direct/indirect boundary: sample on geometric edge
-        if (has_flag(boundary_flags, BoundaryFlags::Primary)) {
-            auto [pr_index, reused_sample, pmf] = em.pr_distr[cam_id]->sample_reuse_pmf(sample1);
-            UInt32 index = dr::gather<UInt32>(em.pr_idx[cam_id], pr_index);
-            auto p0 = dr::gather<Point3f>(em.p0, index);
-            auto p1 = dr::gather<Point3f>(em.p1, index);
-            res.p = p0 + reused_sample * p1;
+        bool is_pr = has_flag(boundary_flags, BoundaryFlags::Primary);
+        auto [index, reused_sample, pmf] = is_pr ? em.pr_distr[cam_id]->sample_reuse_pmf(sample1)
+                                                 : em.distr->sample_reuse_pmf(sample1);
+        if (is_pr)
+            index = dr::gather<UInt32>(em.pr_idx[cam_id], index);
+        auto p0 = dr::gather<Point3f>(em.p0, index);
+        auto p1 = dr::gather<Point3f>(em.p1, index);
+        res.p = p0 + reused_sample * p1;
+        res.pdf = pmf / dr::norm(p0 - p1);       // sample uniformly on the edge
+        if (is_pr) {
+            // primary: direct connect to the camera
+            const Sensor* sensor = m_sensors[cam_id].get();
+            auto cam_pos = sensor->world_transform().translation();
+            res.d = dr::detach(dr::normalize(res.p - cam_pos));
+        } else if (has_flag(boundary_flags, BoundaryFlags::Direct)) {
+            // direct: sample point on emitter
+            Point2f sample(sample2);
+            size_t emitter_count = m_emitters.size();
+            bool vcall_inline = true;
+            if constexpr (dr::is_jit_v<Float>)
+                vcall_inline = jit_flag(JitFlag::VCallInline);
+            if (emitter_count > 1 || (emitter_count == 1 && !vcall_inline)) {
+                // Randomly pick an emitter
+                auto [emitter_index, emitter_weight, sample_x_re] = sample_emitter(sample.x());
+                sample.x() = sample_x_re;
+                EmitterPtr emitter = dr::gather<EmitterPtr>(m_emitters_dr, emitter_index);
+                res.pdf *= pdf_emitter(emitter_index);
+                // Sample a position on the emitter
+                auto [ps, w] = emitter->sample_position(0.0, sample);
+                res.d = dr::detach(dr::normalize(ps.p - res.p));
+                res.pdf *= emitter->pdf_position(ps);
+            } else if (emitter_count == 1) {
+                // Sample a position on the emitter
+                auto [ps, w] = m_emitters[0]->sample_position(0.0, sample);
+                res.d = dr::detach(dr::normalize(ps.p - res.p));
+                res.pdf *= m_emitters[0]->pdf_position(ps);
+            } else {
+                Throw("No emitter can be sampled in the scene");  
+            }
+        } else {
+            // indirect: sample a direction
         }
     }
 

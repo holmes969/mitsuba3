@@ -23,5 +23,16 @@ scene_fn = 'cbox_bunny.xml'
 scene_path = os.path.join(scene_dir, scene_fn)
 sc = mi.load_file(scene_path, integrator='path', max_depth=max_depth)
 sc.build_geometric_edges()
-e = sc.edges()
+e = sc.edge_manager()
+
+sampler = mi.load_dict({
+        "type" : "ldsampler",
+        "sample_count" : 1024,
+})
+sampler.seed(0, 1024)
+edge_sample = sc.sample_edge_ray(sampler.next_1d(), sampler.next_2d(), mi.BoundaryFlags.Primary, 0)
+print(edge_sample.p)
+print(edge_sample.d)
+print(edge_sample.pdf)
+
 print("Done")

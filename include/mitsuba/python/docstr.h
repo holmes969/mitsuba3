@@ -6457,6 +6457,14 @@ static const char *__doc_mitsuba_Scene_build_geometric_edges = R"doc(Build a lis
 
 static const char *__doc_mitsuba_Scene_edge_manager = R"doc(Return the edge manager)doc";
 
+// static const char *__doc_mitsuba_BoundaryFlags_Pixel = R"doc(Pixel Boundary)doc";
+
+// static const char *__doc_mitsuba_BoundaryFlags_Primary = R"doc(Primary Boundary)doc";
+
+// static const char *__doc_mitsuba_BoundaryFlags_Direct = R"doc(Direct Boundary)doc";
+
+// static const char *__doc_mitsuba_BoundaryFlags_Indirect = R"doc(Indirect Boundary)doc";
+
 static const char *__doc_mitsuba_Scene_eval_emitter_direction =
 R"doc(Re-evaluate the incident direct radiance of the
 sample_emitter_direction() method.
