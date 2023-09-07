@@ -52,8 +52,6 @@ struct EdgeManager
         pr_idx.clear();
     }
 
-    // EdgeSample<Float> sample_edge_ray(Float sample1, const Point2f &sample2, uint32_t boundary_flags, uint32_t cam_id) const;
-
     Mask boundary;
     Point3f p0, p1;
     Normal3f n0, n1;

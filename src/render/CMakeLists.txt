@@ -76,7 +76,7 @@ add_library(mitsuba-render OBJECT
   shapegroup.cpp   ${INC_DIR}/shapegroup.h
   volume.cpp       ${INC_DIR}/volume.h
   volumegrid.cpp   ${INC_DIR}/volumegrid.h
-  edge.cpp         ${INC_DIR}/edge.h
+                   ${INC_DIR}/edge.h
   ${LIBRENDER_EXTRA_SRC}
 )
 

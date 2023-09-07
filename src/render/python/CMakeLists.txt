@@ -30,6 +30,7 @@ set(RENDER_PY_SRC
   ${CMAKE_CURRENT_SOURCE_DIR}/emitter.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/bsdf.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/interaction.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/edge.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/microfacet.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/phase.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/sensor.cpp
