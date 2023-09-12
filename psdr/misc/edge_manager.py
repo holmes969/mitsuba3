@@ -30,9 +30,8 @@ sampler = mi.load_dict({
         "sample_count" : 1024,
 })
 sampler.seed(0, 1024)
-edge_sample = sc.sample_edge_ray(sampler.next_1d(), sampler.next_2d(), mi.BoundaryFlags.Primary, 0)
+edge_sample = sc.sample_edge_ray(sampler.next_1d(), sampler.next_2d(), mi.BoundaryFlags.Direct, 0)
 print(edge_sample.p)
 print(edge_sample.d)
 print(edge_sample.pdf)
-
 print("Done")

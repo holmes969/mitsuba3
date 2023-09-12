@@ -411,7 +411,6 @@ class PSIntegrator(mi.CppADIntegrator):
         raise Exception('PSIntegrator does not provide the sample() method. '
                         'It should be implemented by subclasses that '
                         'specialize the abstract RBIntegrator interface.')
-
 class PSIntegratorPRB(PSIntegrator):
     """
     Abstract base class of PRB-style path-space differentiable integrators.
@@ -603,6 +602,21 @@ class PSIntegratorPRB(PSIntegrator):
 
             # Run kernel representing side effects of the above
             dr.eval()
+
+class PSIntegratorBoundary(mi.CppADIntegrator):
+
+    def __init__(self, props = mi.Properties()):
+        super().__init__(props)
+
+        max_depth = props.get('max_depth', 6)
+        if max_depth < 0 and max_depth != -1:
+            raise Exception("\"max_depth\" must be set to -1 (infinite) or a value >= 0")
+
+        # Map -1 (infinity) to 2^32-1 bounces
+        self.max_depth = max_depth if max_depth != -1 else 0xffffffff
+    
+    
+
 
 def mis_weight(pdf_a, pdf_b):
     """

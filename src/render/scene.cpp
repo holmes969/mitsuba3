@@ -460,13 +460,17 @@ MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_ray(Float sampl
                 res.pdf *= pdf_emitter(emitter_index);
                 // Sample a position on the emitter
                 auto [ps, w] = emitter->sample_position(0.0, sample);
-                res.d = dr::detach(dr::normalize(ps.p - res.p));
-                res.pdf *= emitter->pdf_position(ps);
+                auto d = ps.p - res.p;
+                res.d = dr::detach(dr::normalize(d));
+                Float inv_g = dr::detach(dr::squared_norm(d) / dr::dot(ps.n, -res.d));
+                res.pdf *= emitter->shape()->pdf_position(ps);
             } else if (emitter_count == 1) {
                 // Sample a position on the emitter
                 auto [ps, w] = m_emitters[0]->sample_position(0.0, sample);
-                res.d = dr::detach(dr::normalize(ps.p - res.p));
-                res.pdf *= m_emitters[0]->pdf_position(ps);
+                auto d = ps.p - res.p;
+                res.d = dr::detach(dr::normalize(d));
+                Float inv_g = dr::detach(dr::squared_norm(d) / dr::dot(ps.n, -res.d));
+                res.pdf *= m_emitters[0]->shape()->pdf_position(ps);
             } else {
                 Throw("No emitter can be sampled in the scene");  
             }
