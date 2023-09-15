@@ -22,17 +22,21 @@ def run_mitsuba(mode, spp):
     import mitsuba as mi
     mi.set_variant('cuda_ad_rgb')
     import psdr_jit_prb
+    import psdr_primary
     import drjit as dr
 
     # select integrator based on mode
     integrator_name = {
         "forward" : "psdr_jit_prb",
-        "interior": "psdr_jit_prb"
+        "interior": "psdr_jit_prb",
+        "primary":  "psdr_primary"
     }
 
     # load 3D scene from xml file
     sc_path = os.path.join(scene_dir, scene_fn)
     sc = mi.load_file(sc_path, integrator=integrator_name[mode], max_depth=max_depth)
+    if mode in ['primary', 'direct', 'indirect']:
+        sc.build_geometric_edges()
     # configure scene with differentiable param.
     dr_var = mi.Float(0.0)
     dr.enable_grad(dr_var)

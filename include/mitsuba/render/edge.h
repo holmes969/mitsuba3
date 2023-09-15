@@ -14,6 +14,8 @@ struct EdgeSample
     MI_IMPORT_CORE_TYPES();
 
     Point3f p;
+    Vector3f e;
+    Vector3f e2;
     Vector3f d;
     Float pdf;
 

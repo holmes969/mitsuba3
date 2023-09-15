@@ -438,13 +438,18 @@ MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_ray(Float sampl
             index = dr::gather<UInt32>(em.pr_idx[cam_id], index);
         auto p0 = dr::gather<Point3f>(em.p0, index);
         auto p1 = dr::gather<Point3f>(em.p1, index);
-        res.p = p0 + reused_sample * p1;
-        res.pdf = pmf / dr::norm(p0 - p1);       // sample uniformly on the edge
+        auto p2 = dr::gather<Point3f>(em.p2, index);
+        res.e = p1 - p0;
+        auto dist_e = dr::norm(res.e);
+        res.e2 = dr::normalize(p2 - p0);
+        res.p = p0 + reused_sample * res.e;
+        res.pdf = pmf / dist_e;       // sample uniformly on the edge
+        res.e /= dist_e;
         if (is_pr) {
             // primary: direct connect to the camera
             const Sensor* sensor = m_sensors[cam_id].get();
             auto cam_pos = sensor->world_transform().translation();
-            res.d = dr::detach(dr::normalize(res.p - cam_pos));
+            res.d = dr::normalize(res.p - cam_pos);
         } else if (has_flag(boundary_flags, BoundaryFlags::Direct)) {
             // direct: sample point on emitter
             Point2f sample(sample2);
@@ -461,16 +466,16 @@ MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_ray(Float sampl
                 // Sample a position on the emitter
                 auto [ps, w] = emitter->sample_position(0.0, sample);
                 auto d = ps.p - res.p;
-                res.d = dr::detach(dr::normalize(d));
+                res.d = dr::normalize(d);
                 Float inv_g = dr::detach(dr::squared_norm(d) / dr::dot(ps.n, -res.d));
-                res.pdf *= emitter->shape()->pdf_position(ps);
+                res.pdf *= emitter->shape()->pdf_position(ps) * inv_g;
             } else if (emitter_count == 1) {
                 // Sample a position on the emitter
                 auto [ps, w] = m_emitters[0]->sample_position(0.0, sample);
                 auto d = ps.p - res.p;
-                res.d = dr::detach(dr::normalize(d));
+                res.d = dr::normalize(d);
                 Float inv_g = dr::detach(dr::squared_norm(d) / dr::dot(ps.n, -res.d));
-                res.pdf *= m_emitters[0]->shape()->pdf_position(ps);
+                res.pdf *= m_emitters[0]->shape()->pdf_position(ps) * inv_g;
             } else {
                 Throw("No emitter can be sampled in the scene");  
             }

@@ -3,6 +3,7 @@ from __future__ import annotations as __annotations__ # Delayed parsing of type 
 import mitsuba as mi
 import drjit as dr
 import gc
+import numpy as np
 
 class PSIntegrator(mi.CppADIntegrator):
     """
@@ -603,19 +604,102 @@ class PSIntegratorPRB(PSIntegrator):
             # Run kernel representing side effects of the above
             dr.eval()
 
-class PSIntegratorBoundary(mi.CppADIntegrator):
+class PSIntegratorBoundary(PSIntegrator):
 
     def __init__(self, props = mi.Properties()):
         super().__init__(props)
-
         max_depth = props.get('max_depth', 6)
         if max_depth < 0 and max_depth != -1:
             raise Exception("\"max_depth\" must be set to -1 (infinite) or a value >= 0")
-
         # Map -1 (infinity) to 2^32-1 bounces
         self.max_depth = max_depth if max_depth != -1 else 0xffffffff
     
+    def sample_boundary_segment(
+        self,
+        scene: mi.Scene,
+        sensor: mi.Sensor,
+        sampler: mi.Sampler,
+        active: mi.Bool
+    ) -> Tuple[mi.RayDifferential3f, mi.Spectrum, mi.Vector2f, mi.Bool]:
+        raise Exception('PSIntegratorBoundary does not provide the sample_boundary_segment() method.')
     
+    def sample_sensor_subpath(
+        self,
+        ray: mi.RayDifferential3f,
+        scene: mi.Scene,
+        sesor: mi.Sensor
+    ):
+        raise Exception('PSIntegratorBoundary does not provide the trace_sensor_subpath() method.')
+
+    def sample_emitter_subpath(
+        self,
+        ray: mi.RayDifferential3f,
+        scene: mi.Scene
+    ):
+        raise Exception('PSIntegratorBoundary does not provide the trace_emitter_subpath() method.')
+    
+    def render(self: mi.SamplingIntegrator,
+               scene: mi.Scene,
+               sensor: Union[int, mi.Sensor] = 0,
+               seed: int = 0,
+               spp: int = 0,
+               develop: bool = True,
+               evaluate: bool = True) -> mi.TensorXf:
+        raise Exception('PSIntegratorBoundary does not provide the render() method.')
+    
+    def render_forward(self: mi.SamplingIntegrator,
+                       scene: mi.Scene,
+                       params: Any,
+                       sensor_id: int = 0,
+                       seed: int = 0,
+                       spp: int = 0) -> mi.TensorXf:
+       
+        sensor = scene.sensors()[sensor_id]
+        film = sensor.film()
+        aovs = self.aovs()
+        with dr.suspend_grad():
+            sampler, spp = self.prepare(sensor, seed, spp, aovs)
+            with dr.resume_grad():
+                ray, boundary_weight, pos, active = self.sample_boundary_segment(scene, sensor_id, sampler)
+            # np.savetxt("debug.xyz", ray.o.numpy(), delimiter=" ", fmt="%.6f")
+            # np.savetxt("debug_valid.xyz", dr.gather(type(ray.o), ray.o, dr.compress(active)).numpy(), delimiter=" ", fmt="%.6f")
+            emitter_weights = self.sample_emitter_subpath(ray, scene)
+            ray.d = -ray.d
+            sensor_weights, pos_list = self.sample_sensor_subpath(ray, scene, sensor)                
+            with dr.resume_grad():
+                # we may need a for loop here
+                res = boundary_weight * emitter_weights[0] * sensor_weights[0]
+                block = film.create_block()
+                # Only use the coalescing feature when rendering enough samples
+                block.set_coalesce(block.coalesce() and spp >= 4)
+                # Deposit samples with gradient tracking for 'pos'.
+                # After reparameterizing the camera ray, we need to evaluate
+                #   Σ (fi Li det)
+                #  ---------------
+                #   Σ (fi det)
+                PSIntegrator._splat_to_block(
+                    block, film, pos,
+                    value=res,
+                    weight=1.0,
+                    alpha=dr.select(active, mi.Float(1), mi.Float(0)),
+                    wavelengths=ray.wavelengths
+                )
+                # Perform the weight division and return an image tensor
+                film.put_block(block)
+                result_img = film.develop()
+                dr.forward_to(result_img)
+        return dr.grad(result_img)
+    
+    def render_backward(self: mi.SamplingIntegrator,
+                        scene: mi.Scene,
+                        params: Any,
+                        grad_in: mi.TensorXf,
+                        sensor: Union[int, mi.Sensor] = 0,
+                        seed: int = 0,
+                        spp: int = 0) -> None:
+        raise Exception('PSIntegratorBoundary does not yet implemented the render_backward() method.')
+    
+
 
 
 def mis_weight(pdf_a, pdf_b):

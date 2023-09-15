@@ -23,5 +23,7 @@ MI_PY_EXPORT(EdgeSample) {
         // Members
         .def_field(EdgeSample<Float>, p)
         .def_field(EdgeSample<Float>, d)
+        .def_field(EdgeSample<Float>, e)
+        .def_field(EdgeSample<Float>, e2)
         .def_field(EdgeSample<Float>, pdf);
 }
