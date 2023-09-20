@@ -640,7 +640,7 @@ class PSIntegratorBoundary(PSIntegrator):
     
     def render(self: mi.SamplingIntegrator,
                scene: mi.Scene,
-               sensor: Union[int, mi.Sensor] = 0,
+               sensor_id: int = 0,
                seed: int = 0,
                spp: int = 0,
                develop: bool = True,
@@ -688,7 +688,8 @@ class PSIntegratorBoundary(PSIntegrator):
                 film.put_block(block)
                 result_img = film.develop()
                 dr.forward_to(result_img)
-        return dr.grad(result_img)
+        # return dr.grad(result_img)
+        return result_img
     
     def render_backward(self: mi.SamplingIntegrator,
                         scene: mi.Scene,
