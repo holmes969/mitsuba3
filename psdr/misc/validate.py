@@ -110,9 +110,11 @@ def run_tensorray(mode, spp):
         integrator.set_manager(sc_manager)
         _tmp = integrator.renderD(Vector3fC())
         dr.forward(P)
-        # dr.set_grad(P, 1.0)
-        # dr.forward_to(_tmp, flags=dr.ADFlag.ClearInterior)
         image = dr.grad(_tmp).torch()
+        # debug
+        image_debug = dr.detach(_tmp).torch()
+        image_debug = image_debug.reshape((img_width, img_height, 3))
+        save_image(f'tr_{mode}_debug.exr', image_debug)
     image = image.reshape((img_width, img_height, 3))
     save_image(f'tr_{mode}.exr', image)
     print(f"[Info] TensorRay [{mode}], spp = {spp}!")

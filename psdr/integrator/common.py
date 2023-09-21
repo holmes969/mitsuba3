@@ -672,11 +672,6 @@ class PSIntegratorBoundary(PSIntegrator):
                 block = film.create_block()
                 # Only use the coalescing feature when rendering enough samples
                 block.set_coalesce(block.coalesce() and spp >= 4)
-                # Deposit samples with gradient tracking for 'pos'.
-                # After reparameterizing the camera ray, we need to evaluate
-                #   Σ (fi Li det)
-                #  ---------------
-                #   Σ (fi det)
                 PSIntegrator._splat_to_block(
                     block, film, pos,
                     value=res,
