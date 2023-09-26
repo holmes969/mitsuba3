@@ -31,12 +31,9 @@ def run_mitsuba(mode, spp):
         "interior": "psdr_jit_prb",
         "primary":  "psdr_primary"
     }
-
     # load 3D scene from xml file
     sc_path = os.path.join(scene_dir, scene_fn)
     sc = mi.load_file(sc_path, integrator=integrator_name[mode], max_depth=max_depth)
-    if mode in ['primary', 'direct', 'indirect']:
-        sc.build_geometric_edges()
     # configure scene with differentiable param.
     dr_var = mi.Float(0.0)
     dr.enable_grad(dr_var)
@@ -46,6 +43,9 @@ def run_mitsuba(mode, spp):
     trafo = mi.Transform4f.translate([dr_var, 0.0, 0.0])
     params[key] = dr.ravel(trafo @ initial_vertex_positions)
     params.update()
+    # Note: call build_geometric_edges() after params.update (maybe can fix this later?)
+    if mode in ['primary', 'direct', 'indirect']:
+        sc.build_geometric_edges()
     # start rendering under different modes
     if mode == "forward":
         with dr.suspend_grad():

@@ -15,62 +15,139 @@ class PathSpacePrimaryIntegrator(common.PSIntegratorBoundary):
         scene: mi.Scene,
         sensor_id: int,
         sampler: mi.Sampler,
-    ) -> Tuple[mi.RayDifferential3f, mi.Spectrum, mi.Vector2f, mi.Bool]:
+    ):
         sensor = scene.sensors()[sensor_id]
         film = sensor.film()
         rfilter = film.rfilter()
         if not rfilter.is_box_filter():
             raise Exception("Currently, only box filter is supported for primary boundary term.")
-        # sample edge rays
+        # sample point on geometric edge
         edge_sample = scene.sample_edge_ray(sampler.next_1d(), sampler.next_2d(), mi.BoundaryFlags.Primary, sensor_id)
-        cam_pos = sensor.world_transform().translation()    # we may want to detach?
-        ray = mi.RayDifferential3f(edge_sample.p, edge_sample.d)
-        # trace towards sensor
-        with dr.suspend_grad():
-            # connect edge_sample.p to sensor
-            it = dr.zeros(mi.Interaction3f)
-            it.p = edge_sample.p
-            ds, cam_imp = sensor.sample_direction(it, mi.Point2f())
-            pos = ds.uv + film.crop_offset()
-            # compute the throughput
-            dist2 = dr.squared_norm(edge_sample.p - cam_pos)
-            weight = cam_imp * dist2  / edge_sample.pdf
-            active = dr.neq(ds.pdf, 0.0)        
-        si = scene.ray_intersect(ray, mi.RayFlags.All, coherent=False, active=active)
-        active &= si.is_valid()
-        with dr.suspend_grad():
-            ray_dir = si.p - cam_pos
-            dist = dr.norm(ray_dir)
-            ray_dir /= dist
-            dist1 = dr.norm(edge_sample.p - cam_pos)
-            cos2 = dr.abs_dot(si.n, -ray_dir)
-            e = dr.cross(edge_sample.e, ray_dir)
-            sinphi = dr.norm(e)
-            proj = dr.normalize(dr.cross(e, si.n))
-            sinphi2 = dr.norm(dr.cross(ray_dir, proj))
-            n = dr.normalize(dr.cross(si.n, proj))
-            sign0 = dr.dot(e, edge_sample.e2) > 0.0
-            sign1 = dr.dot(e, n) > 0.0
-            active &= (sinphi > 1e-4) & (sinphi2 > 1e-4)
-            baseVal = (dist / dist1) * (sinphi / sinphi2) * cos2 * dr.select(dr.eq(sign0, sign1), 1.0, -1.0)
-        # Important: the only differential component in boundary term
-        x_dot_n = dr.dot(n, si.p)  # this is wrong for now (to be fixed later)
-        weight *= (baseVal * x_dot_n) & active
-        return ray, weight, pos, active
+        # np.savetxt("debug.xyz", edge_sample.p.numpy(), delimiter=" ", fmt="%.6f")
+
+        # sensor-side end point of the boundary segment (fixed at camera position for primary boundary)
+        endpoint_s = dr.zeros(mi.Interaction3f)
+        endpoint_s.p = sensor.world_transform().translation()
+        endpoint_s.t = 0.0      # to ensure the is_valid is true
+
+        # emitter-side end point of the boundary segment
+        tmp_ray = mi.RayDifferential3f(edge_sample.p + mi.math.ShadowEpsilon * edge_sample.d,    # CZ: any way to avoid explicitedly add this shadowEpsilon?
+                                       edge_sample.d)
+        pi = scene.ray_intersect_preliminary(tmp_ray, coherent=False)
+        tmp_ray.o = endpoint_s.p
+        tmp_ray.d = dr.normalize(edge_sample.p - tmp_ray.o)
+        endpoint_e = pi.compute_surface_interaction(tmp_ray, mi.RayFlags.PathSpace | mi.RayFlags.All)
+        return edge_sample, endpoint_s, endpoint_e
 
     def sample_sensor_subpath(
         self,
-        ray: mi.RayDifferential3f,
         scene: mi.Scene,
-        sesor: mi.Sensor
+        sampler: mi.Sampler,
+        edge_sample,
+        endpoint_s,
+        endpoint_e,
+        sensor: mi.Sensor,
+        active: mi.Bool
     ):
-        return [mi.Spectrum(1.0)], [None]
+        active = mi.Bool(active) 
+        tmp_it = dr.zeros(mi.Interaction3f)
+        tmp_it.p = edge_sample.p
+        sensor_ray = tmp_it.spawn_ray_to(endpoint_s.p)
+        sensor_ray.o = sensor_ray.o + mi.math.ShadowEpsilon * sensor_ray.d      # add shadow epsilon for better numerical stability
+        active = ~scene.ray_test(sensor_ray)
+        ds, cam_imp = sensor.sample_direction(tmp_it, mi.Point2f(), active)
+        film = sensor.film()
+        pos = ds.uv + film.crop_offset()
+        dist2_a = dr.squared_norm(tmp_it.p - endpoint_s.p)
+        dist2_b = dr.squared_norm(endpoint_e.p - endpoint_s.p)
+        active &= dr.neq(ds.pdf, 0.0)
+        weight = (cam_imp * dist2_a / dist2_b) & active
+        return [weight], [pos]
 
     def sample_emitter_subpath(
         self,
-        ray: mi.RayDifferential3f,
-        scene: mi.Scene
+        scene: mi.Scene,
+        sampler: mi.Sampler,
+        edge_sample,
+        endpoint_e,
+        active: mi.Bool
     ):
-        return [mi.Spectrum(1.0)]
+        # Standard BSDF evaluation context for path tracing
+        bsdf_ctx = mi.BSDFContext()
+
+        # --------------------- Configure loop state ----------------------
+        ray_dir = dr.normalize(endpoint_e.p - edge_sample.p)
+        ray = mi.Ray3f(edge_sample.p + mi.math.ShadowEpsilon * ray_dir,    # CZ: any way to avoid explicitedly add this shadowEpsilon?
+                                   ray_dir)
+        depth = mi.UInt32(0)                          # Depth of current vertex
+        L = mi.Spectrum(0)                            # Radiance accumulator
+        β = mi.Spectrum(1)                            # Path throughput weight
+        active = mi.Bool(active)                      # Active SIMD lanes
+        si = mi.SurfaceInteraction3f(endpoint_e)
+
+        # Variables caching information from the previous bounce
+        prev_si         = dr.zeros(mi.SurfaceInteraction3f)
+        prev_bsdf_pdf   = mi.Float(1.0)
+        prev_bsdf_delta = mi.Bool(True)
+
+        # Record the following loop in its entirety
+        loop = mi.Loop(name="Trace emitter subpath for primary boundary",
+                       state=lambda: (sampler, ray, depth, L, β, active, si,
+                                      prev_si, prev_bsdf_pdf, prev_bsdf_delta))
+        loop.set_max_iterations(self.max_depth)
+        while loop(active):
+            # Get the BSDF, potentially computes texture-space differentials
+            bsdf = si.bsdf(ray)
+            
+            # ---------------------- Direct emission ----------------------
+            # Compute MIS weight for emitter sample from previous bounce
+            ds = mi.DirectionSample3f(scene, si=si, ref=prev_si)
+            mis = common.mis_weight(
+                prev_bsdf_pdf,
+                scene.pdf_emitter_direction(prev_si, ds, ~prev_bsdf_delta)
+            )
+            Le = β * mis * ds.emitter.eval(si)
+            
+            # ---------------------- Emitter sampling ----------------------
+            # Should we continue tracing to reach one more vertex?
+            active_next = (depth + 1 < self.max_depth) & si.is_valid()
+            # Is emitter sampling even possible on the current vertex?
+            active_em = active_next & mi.has_flag(bsdf.flags(), mi.BSDFFlags.Smooth)
+            # If so, randomly sample an emitter without derivative tracking.
+            ds, em_weight = scene.sample_emitter_direction(
+                si, sampler.next_2d(), True, active_em)
+            active_em &= dr.neq(ds.pdf, 0.0)
+            # Evaluate BSDF * cos(theta)
+            wo = si.to_local(ds.d)
+            bsdf_value_em, bsdf_pdf_em = bsdf.eval_pdf(bsdf_ctx, si, wo, active_em)
+            mis_em = dr.select(ds.delta, 1, common.mis_weight(ds.pdf, bsdf_pdf_em))
+            Lr_dir = β * mis_em * bsdf_value_em * em_weight
+
+            # ------------------ Detached BSDF sampling -------------------
+            bsdf_sample, bsdf_weight = bsdf.sample(bsdf_ctx, si,
+                                                   sampler.next_1d(),
+                                                   sampler.next_2d(),
+                                                   active_next)
+            
+            # ---- Update loop variables based on current interaction -----
+            L = L + Le + Lr_dir
+            ray = si.spawn_ray(si.to_world(bsdf_sample.wo))
+            β *= bsdf_weight
+
+            # Information about the current vertex needed by the next iteration
+            prev_si = dr.detach(si, True)
+            prev_bsdf_pdf = bsdf_sample.pdf
+            prev_bsdf_delta = mi.has_flag(bsdf_sample.sampled_type, mi.BSDFFlags.Delta)
+
+            # -------------------- Stopping criterion ---------------------
+            # Don't run another iteration if the throughput has reached zero
+            β_max = dr.max(β)
+            active_next &= dr.neq(β_max, 0)
+
+            depth[si.is_valid()] += 1
+            active = active_next
+            si = scene.ray_intersect(ray, ray_flags=mi.RayFlags.All, coherent=dr.eq(depth, 0), active=active)
+
+        return [L]
 
 mi.register_integrator("psdr_primary", lambda props: PathSpacePrimaryIntegrator(props))

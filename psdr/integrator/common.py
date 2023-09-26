@@ -4,6 +4,7 @@ import mitsuba as mi
 import drjit as dr
 import gc
 import numpy as np
+import torch
 
 class PSIntegrator(mi.CppADIntegrator):
     """
@@ -380,14 +381,15 @@ class PSIntegrator(mi.CppADIntegrator):
                        value: mi.Spectrum,
                        weight: mi.Float,
                        alpha: mi.Float,
-                       wavelengths: mi.Spectrum):
+                       wavelengths: mi.Spectrum,
+                       active: mi.Bool = mi.Bool(True)):
         '''Helper function to splat values to a imageblock'''
         if (dr.all(mi.has_flag(film.flags(), mi.FilmFlags.Special))):
             aovs = film.prepare_sample(value, wavelengths,
                                         block.channel_count(),
                                         weight=weight,
                                         alpha=alpha)
-            block.put(pos, aovs)
+            block.put(pos, aovs, active)
             del aovs
         else:
             block.put(
@@ -395,7 +397,8 @@ class PSIntegrator(mi.CppADIntegrator):
                 wavelengths=wavelengths,
                 value=value,
                 weight=weight,
-                alpha=alpha
+                alpha=alpha,
+                active=active
             )
 
     def sample(self,
@@ -617,24 +620,57 @@ class PSIntegratorBoundary(PSIntegrator):
     def sample_boundary_segment(
         self,
         scene: mi.Scene,
-        sensor: mi.Sensor,
+        sensor: int,
         sampler: mi.Sampler,
-        active: mi.Bool
-    ) -> Tuple[mi.RayDifferential3f, mi.Spectrum, mi.Vector2f, mi.Bool]:
+    ):
         raise Exception('PSIntegratorBoundary does not provide the sample_boundary_segment() method.')
     
+    def eval_boundary_segment(
+        self,
+        edge_sample,
+        si_0,
+        si_1,
+    ):
+        active = si_0.is_valid() & si_1.is_valid()
+        with dr.suspend_grad():
+            # non-differentiable component
+            ray_dir = si_1.p - si_0.p
+            dist = dr.norm(ray_dir)
+            ray_dir /= dist
+            dist1 = dr.norm(edge_sample.p - si_0.p)
+            cos2 = dr.abs_dot(si_1.n, -ray_dir)
+            e = dr.cross(edge_sample.e, ray_dir)
+            sinphi = dr.norm(e)
+            proj = dr.normalize(dr.cross(e, si_1.n))
+            sinphi2 = dr.norm(dr.cross(ray_dir, proj))
+            n = dr.normalize(dr.cross(si_1.n, proj))
+            sign0 = dr.dot(e, edge_sample.e2) > 0.0
+            sign1 = dr.dot(e, n) > 0.0
+            active &= (sinphi > 1e-6) & (sinphi2 > 1e-6)
+            baseVal = (dist / dist1) * (sinphi / sinphi2) * cos2 * dr.select(dr.eq(sign0, sign1), 1.0, -1.0)
+        # differential component
+        x_dot_n = dr.dot(n, si_1.p)
+        return baseVal * x_dot_n / edge_sample.pdf, active
+
     def sample_sensor_subpath(
         self,
-        ray: mi.RayDifferential3f,
         scene: mi.Scene,
-        sesor: mi.Sensor
+        sampler: mi.Sampler,
+        edge_sample,
+        endpoint_s,
+        endpoint_e,
+        sensor: mi.Sensor,
+        active: mi.Bool
     ):
         raise Exception('PSIntegratorBoundary does not provide the trace_sensor_subpath() method.')
 
     def sample_emitter_subpath(
         self,
-        ray: mi.RayDifferential3f,
-        scene: mi.Scene
+        scene: mi.Scene,
+        sampler: mi.Sampler,
+        edge_sample,
+        endpoint_e,
+        active: mi.Bool,
     ):
         raise Exception('PSIntegratorBoundary does not provide the trace_emitter_subpath() method.')
     
@@ -653,38 +689,37 @@ class PSIntegratorBoundary(PSIntegrator):
                        sensor_id: int = 0,
                        seed: int = 0,
                        spp: int = 0) -> mi.TensorXf:
-       
         sensor = scene.sensors()[sensor_id]
         film = sensor.film()
         aovs = self.aovs()
         with dr.suspend_grad():
             sampler, spp = self.prepare(sensor, seed, spp, aovs)
             with dr.resume_grad():
-                ray, boundary_weight, pos, active = self.sample_boundary_segment(scene, sensor_id, sampler)
-            # np.savetxt("debug.xyz", ray.o.numpy(), delimiter=" ", fmt="%.6f")
-            # np.savetxt("debug_valid.xyz", dr.gather(type(ray.o), ray.o, dr.compress(active)).numpy(), delimiter=" ", fmt="%.6f")
-            emitter_weights = self.sample_emitter_subpath(ray, scene)
-            ray.d = -ray.d
-            sensor_weights, pos_list = self.sample_sensor_subpath(ray, scene, sensor)                
+                edge_sample, endpoint_s, endpoint_e = self.sample_boundary_segment(scene, sensor_id, sampler)
+                bseg_weight, active = self.eval_boundary_segment(edge_sample, endpoint_s, endpoint_e)
+            weight_s, pos = self.sample_sensor_subpath(scene, sampler, edge_sample, endpoint_s, endpoint_e, sensor, active)
+            weight_e = self.sample_emitter_subpath(scene, sampler, edge_sample, endpoint_e, active)
             with dr.resume_grad():
-                # we may need a for loop here
-                res = boundary_weight * emitter_weights[0] * sensor_weights[0]
-                block = film.create_block()
-                # Only use the coalescing feature when rendering enough samples
-                block.set_coalesce(block.coalesce() and spp >= 4)
-                PSIntegrator._splat_to_block(
-                    block, film, pos,
-                    value=res,
-                    weight=1.0,
-                    alpha=dr.select(active, mi.Float(1), mi.Float(0)),
-                    wavelengths=ray.wavelengths
-                )
-                # Perform the weight division and return an image tensor
-                film.put_block(block)
+                len_s = len(weight_s)
+                len_e = len(weight_e)
+                for idx_s in range(len_s):
+                    idx_e = min(len_e, self.max_depth) - 1
+                    block = film.create_block()
+                    block.set_coalesce(False)
+                    res = bseg_weight * weight_s[idx_s] * weight_e[idx_e] / spp
+                    PSIntegrator._splat_to_block(
+                        block, film, pos[idx_s],
+                        value=res,
+                        weight=0.0,         # avoid division by weights
+                        alpha=dr.select(active, mi.Float(1), mi.Float(0)),
+                        wavelengths=[],
+                        active=active
+                    )
+                    film.put_block(block)
                 result_img = film.develop()
                 dr.forward_to(result_img)
-        # return dr.grad(result_img)
-        return result_img
+        return dr.grad(result_img)
+        # return result_img
     
     def render_backward(self: mi.SamplingIntegrator,
                         scene: mi.Scene,
@@ -695,9 +730,6 @@ class PSIntegratorBoundary(PSIntegrator):
                         spp: int = 0) -> None:
         raise Exception('PSIntegratorBoundary does not yet implemented the render_backward() method.')
     
-
-
-
 def mis_weight(pdf_a, pdf_b):
     """
     Compute the Multiple Importance Sampling (MIS) weight given the densities

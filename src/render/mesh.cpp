@@ -770,7 +770,14 @@ Mesh<Float, Spectrum>::compute_surface_interaction(const Ray3f &ray,
     SurfaceInteraction3f si = dr::zeros<SurfaceInteraction3f>();
 
     // Re-interpolate intersection using barycentric coordinates
-    si.p = dr::fmadd(p0, b0, dr::fmadd(p1, b1, p2 * b2));
+    if (has_flag(ray_flags, RayFlags::PathSpace)) {
+        Point3f p0_d = dr::detach(p0);
+        Point3f p1_d = dr::detach(p1);
+        Point3f p2_d = dr::detach(p2);
+        si.p = dr::fmadd(p0_d, b0, dr::fmadd(p1_d, b1, p2_d * b2));
+    }
+    else
+        si.p = dr::fmadd(p0, b0, dr::fmadd(p1, b1, p2 * b2));
 
     // Potentially recompute the distance traveled to the surface interaction hit point
     if (IsDiff && has_flag(ray_flags, RayFlags::FollowShape))

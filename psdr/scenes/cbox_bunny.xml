@@ -34,6 +34,18 @@
 		<rgb name="reflectance" value="0.9, 0.2, 0.2"/>
 	</bsdf>
 
+	<!-- <shape type="obj" id='bunny_shape'>
+		<string name="filename" value="meshes/emitter.obj"/>
+		<transform name="toWorld">
+			<scale x="0.5" z="0.5"/>
+			<translate x='50' y="190.0"/>
+		</transform>
+		<ref id="white"/>
+		<emitter type="area">
+			<rgb name="radiance" value="40.0, 40.0, 40.0"/>
+		</emitter>
+	</shape> -->
+
 	<shape type="obj" id='emitter'>
 		<string name="filename" value="meshes/emitter.obj"/>
 		<transform name="toWorld">
@@ -57,7 +69,28 @@
 		<boolean name='faceNormals' value='true'/>
 	</shape>
 
-	<shape type="obj">
+	<!-- <shape type="obj" id='bunny_shape'>
+		<string name="filename" value="meshes/cube.obj"/>
+		<transform name="toWorld">
+			<scale x="30.0" y="30.0" z="30.0"/>
+			<translate x="15" y="60" z="20"/>
+		</transform>
+		<ref id="white"/>
+		<boolean name='faceNormals' value='false'/>
+	</shape> -->
+
+	<!-- <shape type="obj" id='bunny_shape'>
+		<string name="filename" value="meshes/sphere_flat.obj"/>
+		<transform name="toWorld">
+			<scale x="50.0" y="50.0" z="50.0"/>
+			<rotate z="1" angle="-30"/>
+			<translate x="15" y="60" z="20"/>
+		</transform>
+		<ref id="white"/>
+		<boolean name='faceNormals' value='false'/>
+	</shape> -->
+
+	<!-- <shape type="obj">
 		<string name="filename" value="meshes/floor.obj"/>
 		<ref id="white"/>
 	</shape>
@@ -80,5 +113,5 @@
 	<shape type="obj">
 		<string name="filename" value="meshes/wall_right.obj"/>
 		<ref id="white"/>
-	</shape>
+	</shape> -->
 </scene>

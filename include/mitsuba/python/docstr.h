@@ -5979,6 +5979,8 @@ static const char *__doc_mitsuba_RayFlags_BoundaryTest = R"doc(Compute the bound
 
 static const char *__doc_mitsuba_RayFlags_DetachShape = R"doc(Derivatives of the SurfaceInteraction fields ignore shape's motion)doc";
 
+static const char *__doc_mitsuba_RayFlags_PathSpace = R"doc(Derivatives of the SurfaceInteraction fields for boundary term)doc";
+
 static const char *__doc_mitsuba_RayFlags_Empty = R"doc(No flags set)doc";
 
 static const char *__doc_mitsuba_RayFlags_FollowShape = R"doc(Derivatives of the SurfaceInteraction fields follow shape's motion)doc";

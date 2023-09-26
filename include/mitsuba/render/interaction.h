@@ -56,6 +56,9 @@ enum class RayFlags : uint32_t {
     /// Derivatives of the SurfaceInteraction fields ignore shape's motion
     DetachShape = 0x100,
 
+    /// Derivatives of the SurfaceInteraction fields for boundary term
+    PathSpace = 0x200,
+
     // =============================================================
     //!                 Compound compute flags
     // =============================================================

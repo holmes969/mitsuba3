@@ -12,6 +12,7 @@ MI_PY_EXPORT(RayFlags) {
         .def_value(RayFlags, ShadingFrame)
         .def_value(RayFlags, FollowShape)
         .def_value(RayFlags, DetachShape)
+        .def_value(RayFlags, PathSpace)
         .def_value(RayFlags, BoundaryTest)
         .def_value(RayFlags, All)
         .def_value(RayFlags, AllNonDifferentiable);
