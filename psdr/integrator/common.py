@@ -719,16 +719,58 @@ class PSIntegratorBoundary(PSIntegrator):
                 result_img = film.develop()
                 dr.forward_to(result_img)
         return dr.grad(result_img)
-        # return result_img
     
     def render_backward(self: mi.SamplingIntegrator,
                         scene: mi.Scene,
                         params: Any,
                         grad_in: mi.TensorXf,
-                        sensor: Union[int, mi.Sensor] = 0,
+                        sensor_id: int = 0,
                         seed: int = 0,
                         spp: int = 0) -> None:
-        raise Exception('PSIntegratorBoundary does not yet implemented the render_backward() method.')
+        sensor = scene.sensors()[sensor_id]
+        film = sensor.film()
+        aovs = self.aovs()
+        with dr.suspend_grad():
+            sampler, spp = self.prepare(sensor, seed, spp, aovs)
+            with dr.resume_grad():
+                edge_sample, endpoint_s, endpoint_e = self.sample_boundary_segment(scene, sensor_id, sampler)
+                bseg_weight, active = self.eval_boundary_segment(edge_sample, endpoint_s, endpoint_e)
+            weight_s, pos = self.sample_sensor_subpath(scene, sampler, edge_sample, endpoint_s, endpoint_e, sensor, active)
+            weight_e = self.sample_emitter_subpath(scene, sampler, edge_sample, endpoint_e, active)
+            with dr.resume_grad():
+                len_s = len(weight_s)
+                len_e = len(weight_e)
+                for idx_s in range(len_s):
+                    idx_e = min(len_e, self.max_depth) - 1
+                    block = film.create_block()
+                    block.set_coalesce(False)
+                    res = bseg_weight * weight_s[idx_s] * weight_e[idx_e] / spp
+                    PSIntegrator._splat_to_block(
+                        block, film, pos[idx_s],
+                        value=res,
+                        weight=0.0,         # avoid division by weights
+                        alpha=dr.select(active, mi.Float(1), mi.Float(0)),
+                        wavelengths=[],
+                        active=active
+                    )
+                    film.put_block(block)
+        
+                # This step launches a kernel
+                dr.schedule(block.tensor())                    
+                image = film.develop()
+
+                # Differentiate sample splatting and weight division steps to
+                # retrieve the adjoint radiance
+                dr.set_grad(image, grad_in)
+                dr.enqueue(dr.ADMode.Backward, image)
+                dr.traverse(mi.Float, dr.ADMode.Backward)
+
+            # We don't need any of the outputs here
+            del edge_sample, endpoint_s, endpoint_e, bseg_weight, weight_s, weight_e, pos, block, sampler
+            gc.collect()
+
+            # Run kernel representing side effects of the above
+            dr.eval()
     
 def mis_weight(pdf_a, pdf_b):
     """

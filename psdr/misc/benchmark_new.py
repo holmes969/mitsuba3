@@ -14,10 +14,9 @@ if pbdr_sys == 'mitsuba':
     sys.path.insert(0, os.path.join(mitsuba_path, 'psdr\integrator'))
     import mitsuba as mi
     mi.set_variant('cuda_ad_rgb')
-    import psdr_jit
-    import psdr_basic
     import psdr_jit_prb
-    import psdr_jit_prb2
+    import psdr_primary
+    import psdr
 elif pbdr_sys == 'psdr':
     psdr_path = os.path.abspath("../../../psdr-jit/")
     sys.path.insert(0, os.path.join(psdr_path, 'build\python'))
@@ -40,7 +39,13 @@ result_dir = '../results/'
 
 if pbdr_sys == 'mitsuba':
     scene_path = os.path.join(scene_dir, scene_fn)
-    sc = mi.load_file(scene_path, integrator='psdr_jit_prb', max_depth=max_depth)
+    # sc = mi.load_file(scene_path, integrator='psdr_jit_prb', max_depth=max_depth)
+    # sc = mi.load_file(scene_path, integrator='psdr_primary', max_depth=max_depth)
+    sc = mi.load_file(scene_path, integrator='psdr', max_depth=max_depth)
+    sc.integrator().set_boundary_spp(spp_pixel = 0,
+                                     spp_primary = 128,
+                                     spp_direct = 0,
+                                     spp_indirect = 0)
 elif pbdr_sys == 'psdr':
     curr_dir = os. getcwd()
     os.chdir(scene_dir)
@@ -62,6 +67,7 @@ if pbdr_sys == 'mitsuba':
     trafo = mi.Transform4f.translate([dr_var, 0.0, 0.0])
     params[key] = dr.ravel(trafo @ initial_vertex_positions)
     params.update()
+    sc.build_geometric_edges()
 elif pbdr_sys == 'psdr':
     dr_var = FloatD(var)
     dr.enable_grad(dr_var)

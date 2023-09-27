@@ -90,7 +90,7 @@
 		<boolean name='faceNormals' value='false'/>
 	</shape> -->
 
-	<!-- <shape type="obj">
+	<shape type="obj">
 		<string name="filename" value="meshes/floor.obj"/>
 		<ref id="white"/>
 	</shape>
@@ -113,5 +113,5 @@
 	<shape type="obj">
 		<string name="filename" value="meshes/wall_right.obj"/>
 		<ref id="white"/>
-	</shape> -->
+	</shape>
 </scene>
