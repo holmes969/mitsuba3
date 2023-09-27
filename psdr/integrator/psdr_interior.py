@@ -5,7 +5,7 @@ import mitsuba as mi
 
 import common
 
-class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
+class PathSpaceInteriorIntegrator(common.PSIntegratorPRB):
     def __init__(self, props):
         super().__init__(props)
 
@@ -173,4 +173,4 @@ class PathSpaceJitIntegratorPRB(common.PSIntegratorPRB):
             dr.neq(depth, 0),    # Ray validity flag for alpha blending
             L                    # State for the differential phase
         )
-mi.register_integrator("psdr_jit_prb", lambda props: PathSpaceJitIntegratorPRB(props))
+mi.register_integrator("psdr_interior", lambda props: PathSpaceInteriorIntegrator(props))

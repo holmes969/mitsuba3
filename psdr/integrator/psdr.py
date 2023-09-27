@@ -3,7 +3,7 @@ from __future__ import annotations # Delayed parsing of type annotations
 import drjit as dr
 import numpy as np
 import common
-from psdr_jit_prb import PathSpaceJitIntegratorPRB
+from psdr_interior import PathSpaceInteriorIntegrator
 from psdr_primary import PathSpacePrimaryIntegrator
 
 import mitsuba as mi
@@ -11,7 +11,7 @@ import mitsuba as mi
 class PathSpaceIntegrator(mi.CppADIntegrator):
     def __init__(self, props = mi.Properties()):
         super().__init__(props)
-        self.interior = PathSpaceJitIntegratorPRB(props)
+        self.interior = PathSpaceInteriorIntegrator(props)
         self.primary = PathSpacePrimaryIntegrator(props)
         self.spp_pixel = 0
         self.spp_primary = 0

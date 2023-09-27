@@ -21,14 +21,14 @@ def run_mitsuba(mode, spp):
     sys.path.insert(0, os.path.join(mitsuba_path, 'psdr\integrator'))
     import mitsuba as mi
     mi.set_variant('cuda_ad_rgb')
-    import psdr_jit_prb
+    import psdr_interior
     import psdr_primary
     import drjit as dr
 
     # select integrator based on mode
     integrator_name = {
-        "forward" : "psdr_jit_prb",
-        "interior": "psdr_jit_prb",
+        "forward" : "psdr_interior",
+        "interior": "psdr_interior",
         "primary":  "psdr_primary"
     }
     # load 3D scene from xml file

@@ -14,7 +14,7 @@ if pbdr_sys == 'mitsuba':
     sys.path.insert(0, os.path.join(mitsuba_path, 'psdr\integrator'))
     import mitsuba as mi
     mi.set_variant('cuda_ad_rgb')
-    import psdr_jit_prb
+    import psdr_interior
     import psdr_primary
     import psdr
 elif pbdr_sys == 'psdr':
@@ -39,7 +39,7 @@ result_dir = '../results/'
 
 if pbdr_sys == 'mitsuba':
     scene_path = os.path.join(scene_dir, scene_fn)
-    # sc = mi.load_file(scene_path, integrator='psdr_jit_prb', max_depth=max_depth)
+    # sc = mi.load_file(scene_path, integrator='psdr_interior', max_depth=max_depth)
     # sc = mi.load_file(scene_path, integrator='psdr_primary', max_depth=max_depth)
     sc = mi.load_file(scene_path, integrator='psdr', max_depth=max_depth)
     sc.integrator().set_boundary_spp(spp_pixel = 0,
