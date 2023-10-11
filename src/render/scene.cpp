@@ -419,10 +419,9 @@ MI_VARIANT void Scene<Float, Spectrum>::build_geometric_edges() const {
     }
 }
 
-MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_ray(Float sample1,
-                                                                     const Point2f &sample2,
-                                                                     uint32_t boundary_flags,
-                                                                     uint32_t cam_id) const
+MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_point(Float sample1,
+                                                                       uint32_t boundary_flags,
+                                                                       uint32_t cam_id) const
 {
     EdgeSample<Float> res;
     auto& em = m_edge_manager;
@@ -445,6 +444,7 @@ MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_ray(Float sampl
         res.p = p0 + reused_sample * res.e;
         res.pdf = pmf / dist_e;       // sample uniformly on the edge
         res.e /= dist_e;
+/*        
         if (is_pr) {
             // primary: direct connect to the camera
             const Sensor* sensor = m_sensors[cam_id].get();
@@ -482,6 +482,7 @@ MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_ray(Float sampl
         } else {
             // indirect: sample a direction
         }
+*/
     }
 
     return res;

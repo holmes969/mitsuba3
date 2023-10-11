@@ -21,23 +21,33 @@ class PathSpacePrimaryIntegrator(common.PSIntegratorBoundary):
         rfilter = film.rfilter()
         if not rfilter.is_box_filter():
             raise Exception("Currently, only box filter is supported for primary boundary term.")
+
         # sample point on geometric edge
-        edge_sample = scene.sample_edge_ray(sampler.next_1d(), sampler.next_2d(), mi.BoundaryFlags.Primary, sensor_id)
-        # np.savetxt("debug.xyz", edge_sample.p.numpy(), delimiter=" ", fmt="%.6f")
+        edge_sample = scene.sample_edge_point(sampler.next_1d(), mi.BoundaryFlags.Primary, sensor_id)
+        sensor_pos = sensor.world_transform().translation()
+        tmp_it = dr.zeros(mi.Interaction3f)
+        tmp_it.p = edge_sample.p
+        dir = dr.normalize(edge_sample.p - sensor_pos)
 
         # sensor-side end point of the boundary segment (fixed at camera position for primary boundary)
         endpoint_s = dr.zeros(mi.Interaction3f)
-        endpoint_s.p = sensor.world_transform().translation()
-        endpoint_s.t = 0.0      # to ensure the is_valid is true
+        endpoint_s.p = sensor_pos
+        tmp_it.n = -dir
+        sensor_ray = tmp_it.spawn_ray(-dir)
+        visible = ~scene.ray_test(sensor_ray)
+        endpoint_s.t = dr.select(visible, 0.0, dr.inf)
 
         # emitter-side end point of the boundary segment
-        tmp_ray = mi.RayDifferential3f(edge_sample.p + mi.math.ShadowEpsilon * edge_sample.d,    # CZ: any way to avoid explicitedly add this shadowEpsilon?
-                                       edge_sample.d)
+        tmp_it.n = dir
+        tmp_ray = tmp_it.spawn_ray(dir)
         pi = scene.ray_intersect_preliminary(tmp_ray, coherent=False)
         tmp_ray.o = endpoint_s.p
         tmp_ray.d = dr.normalize(edge_sample.p - tmp_ray.o)
         endpoint_e = pi.compute_surface_interaction(tmp_ray, mi.RayFlags.PathSpace | mi.RayFlags.All)
-        return edge_sample, endpoint_s, endpoint_e
+
+        # evaluate the boundary segment
+        weight, active = self.eval_boundary_segment(edge_sample, endpoint_s, endpoint_e)
+        return edge_sample, endpoint_s, endpoint_e, weight, active
 
     def sample_sensor_subpath(
         self,
@@ -52,9 +62,6 @@ class PathSpacePrimaryIntegrator(common.PSIntegratorBoundary):
         active = mi.Bool(active) 
         tmp_it = dr.zeros(mi.Interaction3f)
         tmp_it.p = edge_sample.p
-        sensor_ray = tmp_it.spawn_ray_to(endpoint_s.p)
-        sensor_ray.o = sensor_ray.o + mi.math.ShadowEpsilon * sensor_ray.d      # add shadow epsilon for better numerical stability
-        active = ~scene.ray_test(sensor_ray)
         ds, cam_imp = sensor.sample_direction(tmp_it, mi.Point2f(), active)
         film = sensor.film()
         pos = ds.uv + film.crop_offset()

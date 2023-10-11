@@ -473,7 +473,7 @@ public:
      * \return Sampled result
      */
 
-    EdgeSample<Float> sample_edge_ray(Float sample1, const Point2f &sample2, uint32_t boundary_flags, uint32_t cam_id) const;
+    EdgeSample<Float> sample_edge_point(Float sample1, uint32_t boundary_flags, uint32_t cam_id) const;
 
     //! @}
     // =============================================================

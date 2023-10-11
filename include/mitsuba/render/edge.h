@@ -16,10 +16,9 @@ struct EdgeSample
     Point3f p;
     Vector3f e;
     Vector3f e2;
-    Vector3f d;
     Float pdf;
 
-    DRJIT_STRUCT(EdgeSample, p, d, pdf)
+    DRJIT_STRUCT(EdgeSample, p, e, e2, pdf)
 };
 
 enum class BoundaryFlags : uint32_t {

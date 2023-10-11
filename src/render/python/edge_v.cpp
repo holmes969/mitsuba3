@@ -13,8 +13,6 @@ MI_PY_EXPORT(EdgeManager) {
         .def_field(EdgeManager<Float>, boundary)
         .def_field(EdgeManager<Float>, count)
         .def_field(EdgeManager<Float>, pr_idx);
-        // .def("sample_edge_ray", &EdgeManager<Float>::sample_edge_ray,
-        //      "sample1"_a, "sample2"_a, "bflag"_a, "cam_id"_a = 0);
 }
 
 MI_PY_EXPORT(EdgeSample) {
@@ -22,7 +20,6 @@ MI_PY_EXPORT(EdgeSample) {
     py::class_<EdgeSample<Float>>(m, "EdgeSample")
         // Members
         .def_field(EdgeSample<Float>, p)
-        .def_field(EdgeSample<Float>, d)
         .def_field(EdgeSample<Float>, e)
         .def_field(EdgeSample<Float>, e2)
         .def_field(EdgeSample<Float>, pdf);

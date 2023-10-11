@@ -695,8 +695,7 @@ class PSIntegratorBoundary(PSIntegrator):
         with dr.suspend_grad():
             sampler, spp = self.prepare(sensor, seed, spp, aovs)
             with dr.resume_grad():
-                edge_sample, endpoint_s, endpoint_e = self.sample_boundary_segment(scene, sensor_id, sampler)
-                bseg_weight, active = self.eval_boundary_segment(edge_sample, endpoint_s, endpoint_e)
+                edge_sample, endpoint_s, endpoint_e, bseg_weight, active = self.sample_boundary_segment(scene, sensor_id, sampler)
             weight_s, pos = self.sample_sensor_subpath(scene, sampler, edge_sample, endpoint_s, endpoint_e, sensor, active)
             weight_e = self.sample_emitter_subpath(scene, sampler, edge_sample, endpoint_e, active)
             with dr.resume_grad():
