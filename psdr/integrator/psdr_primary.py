@@ -25,21 +25,21 @@ class PathSpacePrimaryIntegrator(common.PSIntegratorBoundary):
         # sample point on geometric edge
         edge_sample = scene.sample_edge_point(sampler.next_1d(), mi.BoundaryFlags.Primary, sensor_id)
         sensor_pos = sensor.world_transform().translation()
-        tmp_it = dr.zeros(mi.Interaction3f)
-        tmp_it.p = edge_sample.p
+        tmp_si = dr.zeros(mi.Interaction3f)
+        tmp_si.p = edge_sample.p
         dir = dr.normalize(edge_sample.p - sensor_pos)
 
         # sensor-side end point of the boundary segment (fixed at camera position for primary boundary)
         endpoint_s = dr.zeros(mi.Interaction3f)
         endpoint_s.p = sensor_pos
-        tmp_it.n = -dir
-        sensor_ray = tmp_it.spawn_ray(-dir)
+        tmp_si.n = -dir
+        sensor_ray = tmp_si.spawn_ray(-dir)
         visible = ~scene.ray_test(sensor_ray)
         endpoint_s.t = dr.select(visible, 0.0, dr.inf)
 
         # emitter-side end point of the boundary segment
-        tmp_it.n = dir
-        tmp_ray = tmp_it.spawn_ray(dir)
+        tmp_si.n = dir
+        tmp_ray = tmp_si.spawn_ray(dir)
         pi = scene.ray_intersect_preliminary(tmp_ray, coherent=False)
         tmp_ray.o = endpoint_s.p
         tmp_ray.d = dr.normalize(edge_sample.p - tmp_ray.o)
@@ -60,12 +60,12 @@ class PathSpacePrimaryIntegrator(common.PSIntegratorBoundary):
         active: mi.Bool
     ):
         active = mi.Bool(active) 
-        tmp_it = dr.zeros(mi.Interaction3f)
-        tmp_it.p = edge_sample.p
-        ds, cam_imp = sensor.sample_direction(tmp_it, mi.Point2f(), active)
+        tmp_si = dr.zeros(mi.Interaction3f)
+        tmp_si.p = edge_sample.p
+        ds, cam_imp = sensor.sample_direction(tmp_si, mi.Point2f(), active)
         film = sensor.film()
         pos = ds.uv + film.crop_offset()
-        dist2_a = dr.squared_norm(tmp_it.p - endpoint_s.p)
+        dist2_a = dr.squared_norm(tmp_si.p - endpoint_s.p)
         dist2_b = dr.squared_norm(endpoint_e.p - endpoint_s.p)
         active &= dr.neq(ds.pdf, 0.0)
         weight = (cam_imp * dist2_a / dist2_b) & active
