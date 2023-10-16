@@ -33,7 +33,7 @@ class PathSpacePrimaryIntegrator(common.PSIntegratorBoundary):
         endpoint_s = dr.zeros(mi.Interaction3f)
         endpoint_s.p = sensor_pos
         tmp_si.n = -dir
-        sensor_ray = tmp_si.spawn_ray(-dir)
+        sensor_ray = tmp_si.spawn_ray_to(endpoint_s.p)
         visible = ~scene.ray_test(sensor_ray)
         endpoint_s.t = dr.select(visible, 0.0, dr.inf)
 
