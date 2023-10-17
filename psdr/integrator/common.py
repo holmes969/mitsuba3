@@ -698,25 +698,43 @@ class PSIntegratorBoundary(PSIntegrator):
                 edge_sample, endpoint_s, endpoint_e, bseg_weight, active = self.sample_boundary_segment(scene, sensor_id, sampler)
             weight_s, pos = self.sample_sensor_subpath(scene, sampler, edge_sample, endpoint_s, endpoint_e, sensor, active)
             weight_e = self.sample_emitter_subpath(scene, sampler, edge_sample, endpoint_e, active)
-            with dr.resume_grad():
-                len_s = len(weight_s)
-                len_e = len(weight_e)
-                for idx_s in range(len_s):
-                    idx_e = min(len_e, self.max_depth) - 1
-                    block = film.create_block()
-                    block.set_coalesce(False)
-                    res = bseg_weight * weight_s[idx_s] * weight_e[idx_e] / spp
-                    PSIntegrator._splat_to_block(
-                        block, film, pos[idx_s],
-                        value=res,
-                        weight=0.0,         # avoid division by weights
-                        alpha=dr.select(active, mi.Float(1), mi.Float(0)),
-                        wavelengths=[],
-                        active=active
-                    )
-                    film.put_block(block)
-                result_img = film.develop()
-                dr.forward_to(result_img)
+            block = film.create_block()
+            block.set_coalesce(False)
+            res = weight_e[0] / spp
+            PSIntegrator._splat_to_block(
+                block, film, pos[0],
+                value=res,
+                weight=0.0,         # avoid division by weights
+                alpha=dr.select(active, mi.Float(1), mi.Float(0)),
+                wavelengths=[],
+                active=active
+            )
+            film.put_block(block)
+
+        result_img = film.develop()
+        return result_img
+        # dr.forward_to(result_img)
+
+            # weight_e = self.sample_emitter_subpath(scene, sampler, edge_sample, endpoint_e, active)
+            # with dr.resume_grad():
+            #     len_s = len(weight_s)
+            #     len_e = len(weight_e)
+            #     for idx_s in range(len_s):
+            #         idx_e = min(len_e, self.max_depth) - 1
+            #         block = film.create_block()
+            #         block.set_coalesce(False)
+            #         res = bseg_weight * weight_s[idx_s] * weight_e[idx_e] / spp
+            #         PSIntegrator._splat_to_block(
+            #             block, film, pos[idx_s],
+            #             value=res,
+            #             weight=0.0,         # avoid division by weights
+            #             alpha=dr.select(active, mi.Float(1), mi.Float(0)),
+            #             wavelengths=[],
+            #             active=active
+            #         )
+            #         film.put_block(block)
+            #     result_img = film.develop()
+            #     dr.forward_to(result_img)
         return dr.grad(result_img)
     
     def render_backward(self: mi.SamplingIntegrator,
@@ -732,8 +750,7 @@ class PSIntegratorBoundary(PSIntegrator):
         with dr.suspend_grad():
             sampler, spp = self.prepare(sensor, seed, spp, aovs)
             with dr.resume_grad():
-                edge_sample, endpoint_s, endpoint_e = self.sample_boundary_segment(scene, sensor_id, sampler)
-                bseg_weight, active = self.eval_boundary_segment(edge_sample, endpoint_s, endpoint_e)
+                edge_sample, endpoint_s, endpoint_e, bseg_weight, active = self.sample_boundary_segment(scene, sensor_id, sampler)
             weight_s, pos = self.sample_sensor_subpath(scene, sampler, edge_sample, endpoint_s, endpoint_e, sensor, active)
             weight_e = self.sample_emitter_subpath(scene, sampler, edge_sample, endpoint_e, active)
             with dr.resume_grad():
