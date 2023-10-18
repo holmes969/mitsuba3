@@ -435,6 +435,7 @@ MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_point(Float sam
                                                  : em.distr->sample_reuse_pmf(sample1);
         if (is_pr)
             index = dr::gather<UInt32>(em.pr_idx[cam_id], index);
+        res.idx = index;
         auto p0 = dr::gather<Point3f>(em.p0, index);
         auto p1 = dr::gather<Point3f>(em.p1, index);
         auto p2 = dr::gather<Point3f>(em.p2, index);
@@ -442,7 +443,7 @@ MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_point(Float sam
         auto dist_e = dr::norm(res.e);
         res.e2 = dr::normalize(p2 - p0);
         res.p = p0 + reused_sample * res.e;
-        res.pdf = pmf / dist_e;       // sample uniformly on the edge
+        res.pdf = pmf / dr::detach(dist_e);       // sample uniformly on the edge
         res.e /= dist_e;
 /*        
         if (is_pr) {

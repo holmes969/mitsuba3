@@ -90,6 +90,16 @@
 		<boolean name='faceNormals' value='false'/>
 	</shape> -->
 
+	<!-- <shape type="obj" id='bunny_shape'>
+		<string name="filename" value="meshes/floor.obj"/>
+		<transform name="toWorld">
+			<scale x="0.3" z="0.3"/>
+			<translate x="15" y="60" z="20"/>
+		</transform>
+		<ref id="white"/>
+		<boolean name='faceNormals' value='false'/>
+	</shape> -->
+
 	<shape type="obj">
 		<string name="filename" value="meshes/floor.obj"/>
 		<ref id="white"/>

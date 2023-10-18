@@ -10,6 +10,33 @@ class PathSpacePrimaryIntegrator(common.PSIntegratorBoundary):
     def __init__(self, props):
         super().__init__(props)
     
+    def eval_boundary_segment(
+        self,
+        edge_sample,
+        si_0,           # sensor
+        si_1,
+    ):
+        active = si_0.is_valid() & si_1.is_valid()
+        with dr.suspend_grad():
+            # non-differentiable component
+            ray_dir = si_1.p - si_0.p
+            dist = dr.norm(ray_dir)
+            ray_dir /= dist
+            dist1 = dr.norm(edge_sample.p - si_0.p)
+            cos2 = dr.abs_dot(si_1.n, -ray_dir)
+            e = dr.cross(edge_sample.e, ray_dir)
+            sinphi = dr.norm(e)
+            proj = dr.normalize(dr.cross(e, si_1.n))
+            sinphi2 = dr.norm(dr.cross(ray_dir, proj))
+            n = dr.normalize(dr.cross(si_1.n, proj))
+            sign0 = dr.dot(e, edge_sample.e2) > 0.0
+            sign1 = dr.dot(e, n) > 0.0
+            active &= (sinphi > mi.math.EdgeEpsilon) & (sinphi2 > mi.math.EdgeEpsilon)
+            baseVal = (dist / dist1) * (sinphi / sinphi2) * cos2 * dr.select(dr.eq(sign0, sign1), 1.0, -1.0)
+        # differential component
+        x_dot_n = dr.dot(n, si_1.p)
+        return baseVal * x_dot_n / edge_sample.pdf, active
+
     def sample_boundary_segment(
         self,
         scene: mi.Scene,
