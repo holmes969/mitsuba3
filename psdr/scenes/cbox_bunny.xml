@@ -34,18 +34,6 @@
 		<rgb name="reflectance" value="0.9, 0.2, 0.2"/>
 	</bsdf>
 
-	<!-- <shape type="obj" id='bunny_shape'>
-		<string name="filename" value="meshes/emitter.obj"/>
-		<transform name="toWorld">
-			<scale x="0.5" z="0.5"/>
-			<translate x='50' y="190.0"/>
-		</transform>
-		<ref id="white"/>
-		<emitter type="area">
-			<rgb name="radiance" value="40.0, 40.0, 40.0"/>
-		</emitter>
-	</shape> -->
-
 	<shape type="obj" id='emitter'>
 		<string name="filename" value="meshes/emitter.obj"/>
 		<transform name="toWorld">
@@ -78,8 +66,8 @@
 		<ref id="white"/>
 		<boolean name='faceNormals' value='false'/>
 	</shape> -->
-
-	<!-- <shape type="obj" id='bunny_shape'>
+<!-- 
+	<shape type="obj" id='bunny_shape'>
 		<string name="filename" value="meshes/sphere_flat.obj"/>
 		<transform name="toWorld">
 			<scale x="50.0" y="50.0" z="50.0"/>

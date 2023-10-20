@@ -427,7 +427,6 @@ MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_point(Float sam
     auto& em = m_edge_manager;
     if (has_flag(boundary_flags, BoundaryFlags::Pixel)) {
         // pixel boundary: sample on pixel boundary
-
     } else {
         // primary/direct/indirect boundary: sample on geometric edge
         bool is_pr = has_flag(boundary_flags, BoundaryFlags::Primary);
@@ -445,45 +444,6 @@ MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_point(Float sam
         res.p = p0 + reused_sample * res.e;
         res.pdf = pmf / dr::detach(dist_e);       // sample uniformly on the edge
         res.e /= dist_e;
-/*        
-        if (is_pr) {
-            // primary: direct connect to the camera
-            const Sensor* sensor = m_sensors[cam_id].get();
-            auto cam_pos = sensor->world_transform().translation();
-            res.d = dr::normalize(res.p - cam_pos);
-        } else if (has_flag(boundary_flags, BoundaryFlags::Direct)) {
-            // direct: sample point on emitter
-            Point2f sample(sample2);
-            size_t emitter_count = m_emitters.size();
-            bool vcall_inline = true;
-            if constexpr (dr::is_jit_v<Float>)
-                vcall_inline = jit_flag(JitFlag::VCallInline);
-            if (emitter_count > 1 || (emitter_count == 1 && !vcall_inline)) {
-                // Randomly pick an emitter
-                auto [emitter_index, emitter_weight, sample_x_re] = sample_emitter(sample.x());
-                sample.x() = sample_x_re;
-                EmitterPtr emitter = dr::gather<EmitterPtr>(m_emitters_dr, emitter_index);
-                res.pdf *= pdf_emitter(emitter_index);
-                // Sample a position on the emitter
-                auto [ps, w] = emitter->sample_position(0.0, sample);
-                auto d = ps.p - res.p;
-                res.d = dr::normalize(d);
-                Float inv_g = dr::detach(dr::squared_norm(d) / dr::dot(ps.n, -res.d));
-                res.pdf *= emitter->shape()->pdf_position(ps) * inv_g;
-            } else if (emitter_count == 1) {
-                // Sample a position on the emitter
-                auto [ps, w] = m_emitters[0]->sample_position(0.0, sample);
-                auto d = ps.p - res.p;
-                res.d = dr::normalize(d);
-                Float inv_g = dr::detach(dr::squared_norm(d) / dr::dot(ps.n, -res.d));
-                res.pdf *= m_emitters[0]->shape()->pdf_position(ps) * inv_g;
-            } else {
-                Throw("No emitter can be sampled in the scene");  
-            }
-        } else {
-            // indirect: sample a direction
-        }
-*/
     }
 
     return res;

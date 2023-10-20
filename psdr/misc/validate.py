@@ -7,7 +7,7 @@ import torch, cv2
 scene_dir = '../scenes/'
 scene_fn = 'cbox_bunny.xml'
 result_dir = '../results/'
-max_depth = 2
+max_depth = 4
 
 def save_image(fn, image):
     output = image.detach().cpu().numpy()
@@ -24,6 +24,7 @@ def run_mitsuba(mode, spp):
     import psdr_interior
     import psdr_primary
     import psdr_direct
+    import psdr_indirect
     import drjit as dr
 
     # select integrator based on mode
@@ -31,7 +32,8 @@ def run_mitsuba(mode, spp):
         "forward" : "psdr_interior",
         "interior": "psdr_interior",
         "primary":  "psdr_primary",
-        "direct":   "psdr_direct"
+        "direct":   "psdr_direct",
+        "indirect": "psdr_indirect"
     }
     # load 3D scene from xml file
     sc_path = os.path.join(scene_dir, scene_fn)

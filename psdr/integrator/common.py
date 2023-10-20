@@ -680,45 +680,27 @@ class PSIntegratorBoundary(PSIntegrator):
                 edge_sample, endpoint_s, endpoint_e, bseg_weight, active = self.sample_boundary_segment(scene, sensor_id, sampler)
             weight_s, pos = self.sample_sensor_subpath(scene, sampler, edge_sample, endpoint_s, endpoint_e, sensor, active)
             weight_e = self.sample_emitter_subpath(scene, sampler, edge_sample, endpoint_e, active)
+            assert(len(weight_s) < self.max_depth)
             with dr.resume_grad():
-                block = film.create_block()
-                block.set_coalesce(False)
-                res = bseg_weight * dr.detach(weight_e[0] * weight_s[0]) / spp
-                PSIntegrator._splat_to_block(
-                    block, film, pos[0],
-                    value=res,
-                    weight=0.0,         # avoid division by weights
-                    alpha=dr.select(active, mi.Float(1), mi.Float(0)),
-                    wavelengths=[],
-                    active=active
-                )
-                film.put_block(block)
+                len_s = len(weight_s)
+                len_e = len(weight_e)
+                for idx_s in range(len_s):
+                    idx_e = min(len_e - 1, self.max_depth - 1 - idx_s)
+                    block = film.create_block()
+                    block.set_coalesce(False)
+                    res = bseg_weight * weight_s[idx_s] * weight_e[idx_e] / spp
+                    PSIntegrator._splat_to_block(
+                        block, film, pos[idx_s],
+                        value=res,
+                        weight=0.0,         # avoid division by weights
+                        alpha=dr.select(active, mi.Float(1), mi.Float(0)),
+                        wavelengths=[],
+                        active=active
+                    )
+                    film.put_block(block)
                 result_img = film.develop()
                 dr.forward_to(result_img)
-        # return result_img
         return dr.grad(result_img)
-
-
-            # weight_e = self.sample_emitter_subpath(scene, sampler, edge_sample, endpoint_e, active)
-            # with dr.resume_grad():
-            #     len_s = len(weight_s)
-            #     len_e = len(weight_e)
-            #     for idx_s in range(len_s):
-            #         idx_e = min(len_e, self.max_depth) - 1
-            #         block = film.create_block()
-            #         block.set_coalesce(False)
-            #         res = bseg_weight * weight_s[idx_s] * weight_e[idx_e] / spp
-            #         PSIntegrator._splat_to_block(
-            #             block, film, pos[idx_s],
-            #             value=res,
-            #             weight=0.0,         # avoid division by weights
-            #             alpha=dr.select(active, mi.Float(1), mi.Float(0)),
-            #             wavelengths=[],
-            #             active=active
-            #         )
-            #         film.put_block(block)
-            #     result_img = film.develop()
-            #     dr.forward_to(result_img)
     
     def render_backward(self: mi.SamplingIntegrator,
                         scene: mi.Scene,
@@ -735,12 +717,13 @@ class PSIntegratorBoundary(PSIntegrator):
             with dr.resume_grad():
                 edge_sample, endpoint_s, endpoint_e, bseg_weight, active = self.sample_boundary_segment(scene, sensor_id, sampler)
             weight_s, pos = self.sample_sensor_subpath(scene, sampler, edge_sample, endpoint_s, endpoint_e, sensor, active)
+            assert(len(weight_s) < self.max_depth)
             weight_e = self.sample_emitter_subpath(scene, sampler, edge_sample, endpoint_e, active)
             with dr.resume_grad():
                 len_s = len(weight_s)
                 len_e = len(weight_e)
                 for idx_s in range(len_s):
-                    idx_e = min(len_e, self.max_depth) - 1
+                    idx_e = min(len_e - 1, self.max_depth - 1 - idx_s)
                     block = film.create_block()
                     block.set_coalesce(False)
                     res = bseg_weight * weight_s[idx_s] * weight_e[idx_e] / spp

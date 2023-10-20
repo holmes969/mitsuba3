@@ -30,7 +30,7 @@ enum class BoundaryFlags : uint32_t {
     /// Direct boundary
     Direct = 0x2,
     /// Indirect boundary
-    Indirect = 0x3,
+    Indirect = 0x4,
     
 };
 MI_DECLARE_ENUM_OPERATORS(BoundaryFlags)
