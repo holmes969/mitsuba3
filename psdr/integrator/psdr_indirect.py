@@ -123,7 +123,6 @@ class PathSpaceIndirectIntegrator(common.PSIntegratorBoundary):
         ray_dir = dr.normalize(endpoint_s.p - edge_sample.p)
         ray_org = edge_sample.p + mi.math.ShadowEpsilon * ray_dir
         ray = mi.Ray3f(ray_org, ray_dir)
-        depth = mi.UInt32(0)                          # Depth of current vertex
         β = mi.Spectrum(1)                            # Path throughput weight
         active = mi.Bool(active)                      # Active SIMD lanes
         si = mi.SurfaceInteraction3f(endpoint_s)
@@ -144,34 +143,35 @@ class PathSpaceIndirectIntegrator(common.PSIntegratorBoundary):
             wo_dot_sh_n = mi.Frame3f.cos_theta(local_d)
             valid = (wi_dot_geo_n * wi_dot_sh_n > 0.0) & (wo_dot_geo_n * wo_dot_sh_n > 0.0)
             # Correction term in Veach's thesis
-            correction = dr.select(valid, dr.abs(wi_dot_sh_n * wo_dot_geo_n / (wo_dot_sh_n * wi_dot_geo_n)), 0.0)
+            correction = dr.select(valid,
+                                   dr.abs(wi_dot_sh_n * wo_dot_geo_n / (wo_dot_sh_n * wi_dot_geo_n)),
+                                   0.0)
             bsdf_val, _ = bsdf.eval_pdf(bsdf_ctx, si, local_d, active_s)
-            weight = bsdf_val * correction * cam_imp
+            weight = β * bsdf_val * correction * cam_imp
             weights.append(weight)
             cam_pos.append(ds.uv + film.crop_offset())
             # Keep tracing to next si
             if scalar_depth < max_trace - 1:
-                active_next = active & (scalar_depth + 1 < self.max_depth)
                 bsdf_sample, bsdf_weight = bsdf.sample(bsdf_ctx, si,
-                                                    sampler.next_1d(),
-                                                    sampler.next_2d(),
-                                                    active_next)
+                                                       sampler.next_1d(),
+                                                       sampler.next_2d(),
+                                                       active)
                 wo = si.to_world(bsdf_sample.wo)
-                wi_dot_geo_n = dr.dot(si.n, -ray.d)
                 wo_dot_geo_n = dr.dot(si.n, wo)
                 wo_dot_sh_n = mi.Frame3f.cos_theta(bsdf_sample.wo)
                 valid = (wi_dot_geo_n * wi_dot_sh_n > 0.0) & (wo_dot_geo_n * wo_dot_sh_n > 0.0)
-                correction = dr.select(valid, dr.abs(wi_dot_sh_n * wo_dot_geo_n / (wo_dot_sh_n * wi_dot_geo_n)), 0.0)
+                correction = dr.select(valid,
+                                       dr.abs(wi_dot_sh_n * wo_dot_geo_n / (wo_dot_sh_n * wi_dot_geo_n)),
+                                       0.0)
                 β *= bsdf_weight * correction
                 ray = si.spawn_ray(wo)
 
                 # -------------------- Stopping criterion ---------------------
-                active = active_next & dr.neq(dr.max(β), 0)
                 si = scene.ray_intersect(ray, ray_flags=mi.RayFlags.All, coherent=mi.Bool(False), active=active)
+                active &= si.is_valid() & dr.neq(dr.max(β), 0)
                 # Check if we still need to trace
                 if dr.none(active):
                     break
-
         return weights, cam_pos
 
     def sample_emitter_subpath(
@@ -183,64 +183,78 @@ class PathSpaceIndirectIntegrator(common.PSIntegratorBoundary):
         active: mi.Bool
     ):
         return [1.0]
-        # # per-bounce radiance & screen-space coordinates
-        # weights = []
-        # cam_pos = []
-        # # Standard BSDF evaluation context for path tracing
-        # bsdf_ctx = mi.BSDFContext()
+        # per-bounce radiance
+        weights = []
+        # Standard BSDF evaluation context for path tracing
+        bsdf_ctx = mi.BSDFContext()
 
-        # # --------------------- Configure loop state ----------------------
-        # ray_dir = dr.normalize(endpoint_e.p - edge_sample.p)
-        # ray_org = edge_sample.p + mi.math.ShadowEpsilon * ray_dir
-        # ray = mi.Ray3f(ray_org, ray_dir)
-        # depth = mi.UInt32(0)                          # Depth of current vertex
-        # β = mi.Spectrum(1)                            # Path throughput weight
-        # active = mi.Bool(active)                      # Active SIMD lanes
-        # si = mi.SurfaceInteraction3f(endpoint_e)
+        # --------------------- Configure loop state ----------------------
+        ray_dir = dr.normalize(endpoint_e.p - edge_sample.p)
+        ray_org = edge_sample.p + mi.math.ShadowEpsilon * ray_dir
+        ray = mi.Ray3f(ray_org, ray_dir)
+        β = mi.Spectrum(1)                            # Path throughput weight
+        active = mi.Bool(active)                      # Active SIMD lanes
+        si = mi.SurfaceInteraction3f(endpoint_e)
+        # Variables caching information from the previous bounce
+        prev_si = dr.zeros(mi.SurfaceInteraction3f)
+        prev_bsdf_pdf   = mi.Float(1.0)
+        prev_bsdf_delta = mi.Bool(True)
+        L = 0.0
 
-        # # CZ: Will drjit.loop (with drjit.scatter_reduce) a better implementation?
-        # for scalar_depth in range(self.max_depth-1):
-        #     bsdf = si.bsdf(ray)
-        #     # Connect to sensor
-        #     ds, cam_imp = sensor.sample_direction(si, mi.Point2f(), active)
-        #     sensor_ray = si.spawn_ray_to(ds.p)
-        #     active_s = active & (~scene.ray_test(sensor_ray)) & (ds.pdf > 0.0)
-        #     local_d = si.to_local(sensor_ray.d)
-        #     # Prevent light leak
-        #     wi_dot_geo_n = dr.dot(si.n, si.to_world(si.wi))
-        #     wo_dot_geo_n = dr.dot(si.n, sensor_ray.d)
-        #     wi_dot_sh_n = mi.Frame3f.cos_theta(si.wi)
-        #     wo_dot_sh_n = mi.Frame3f.cos_theta(local_d)
-        #     valid = (wi_dot_geo_n * wi_dot_sh_n > 0.0) & (wo_dot_geo_n * wo_dot_sh_n > 0.0)
-        #     # Correction term in Veach's thesis
-        #     correction = dr.select(valid, dr.abs(wi_dot_sh_n * wo_dot_geo_n / (wo_dot_sh_n * wi_dot_geo_n)), 0.0)
-        #     bsdf_val, _ = bsdf.eval_pdf(bsdf_ctx, si, local_d, active_s)
-        #     weight = bsdf_val * correction * cam_imp
-        #     weights.append(weight)
-        #     cam_pos.append(ds.uv + film.crop_offset())
-        #     # Keep tracing to next si
-        #     if scalar_depth < self.max_depth - 2:
-        #         active_next = active & (scalar_depth + 1 < self.max_depth)
-        #         bsdf_sample, bsdf_weight = bsdf.sample(bsdf_ctx, si,
-        #                                             sampler.next_1d(),
-        #                                             sampler.next_2d(),
-        #                                             active_next)
-        #         wo = si.to_world(bsdf_sample.wo)
-        #         wi_dot_geo_n = dr.dot(si.n, -ray.d)
-        #         wo_dot_geo_n = dr.dot(si.n, wo)
-        #         wo_dot_sh_n = mi.Frame3f.cos_theta(bsdf_sample.wo)
-        #         valid = (wi_dot_geo_n * wi_dot_sh_n > 0.0) & (wo_dot_geo_n * wo_dot_sh_n > 0.0)
-        #         correction = dr.select(valid, dr.abs(wi_dot_sh_n * wo_dot_geo_n / (wo_dot_sh_n * wi_dot_geo_n)), 0.0)
-        #         β *= bsdf_weight * correction
-        #         ray = si.spawn_ray(wo)
+        max_trace = self.max_depth - 1
+        # CZ: Will drjit.loop (with drjit.scatter_reduce) a better implementation?
+        for scalar_depth in range(max_trace):
+            bsdf = si.bsdf(ray)
+            if scalar_depth > 0:
+                 # Compute MIS weight for emitter sample from previous bounce
+                ds = mi.DirectionSample3f(scene, si=si, ref=prev_si)
+                mis = common.mis_weight(
+                    prev_bsdf_pdf,
+                    scene.pdf_emitter_direction(prev_si, ds, ~prev_bsdf_delta)
+                )
+                L += β * mis * ds.emitter.eval(si)
 
-        #         # -------------------- Stopping criterion ---------------------
-        #         active = active_next & dr.neq(dr.max(β), 0)
-        #         si = scene.ray_intersect(ray, ray_flags=mi.RayFlags.All, coherent=mi.Bool(False), active=active)
-        #         # Check if we still need to trace
-        #         if dr.none(active):
-        #             break
+            weights.append(L)
+            
+            # ---------------------- Emitter sampling ----------------------
+            # Should we continue tracing to reach one more vertex?
+            active &= scalar_depth + 1 < max_trace
+            # Is emitter sampling even possible on the current vertex?
+            active_em = active & mi.has_flag(bsdf.flags(), mi.BSDFFlags.Smooth)
+            # If so, randomly sample an emitter without derivative tracking.
+            ds, em_weight = scene.sample_emitter_direction(
+                si, sampler.next_2d(), True, active_em)
+            active_em &= dr.neq(ds.pdf, 0.0)
+            # Evaluate BSDF * cos(theta)
+            wo = si.to_local(ds.d)
+            bsdf_value_em, bsdf_pdf_em = bsdf.eval_pdf(bsdf_ctx, si, wo, active_em)
+            mis_em = dr.select(ds.delta, 1, common.mis_weight(ds.pdf, bsdf_pdf_em))
+            L += β * mis_em * bsdf_value_em * em_weight
 
-        # return weights, cam_pos
+            # ------------------ Detached BSDF sampling -------------------
+            bsdf_sample, bsdf_weight = bsdf.sample(bsdf_ctx, si,
+                                                   sampler.next_1d(),
+                                                   sampler.next_2d(),
+                                                   active)
+            
+            # ---- Update loop variables based on current interaction -----
+            ray = si.spawn_ray(si.to_world(bsdf_sample.wo))
+            β *= bsdf_weight
+
+            # Information about the current vertex needed by the next iteration
+            prev_si = dr.detach(si, True)
+            prev_bsdf_pdf = bsdf_sample.pdf
+            prev_bsdf_delta = mi.has_flag(bsdf_sample.sampled_type, mi.BSDFFlags.Delta)
+
+            # -------------------- Stopping criterion ---------------------
+            # Don't run another iteration if the throughput has reached zero
+            si = scene.ray_intersect(ray, ray_flags=mi.RayFlags.All, coherent=mi.Bool(False), active=active)
+            active &= si.is_valid() & dr.neq(dr.max(β), 0)
+
+            # Check if we still need to trace
+            if dr.none(active):
+                break
+
+        return weights
 
 mi.register_integrator("psdr_indirect", lambda props: PathSpaceIndirectIntegrator(props))
