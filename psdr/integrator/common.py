@@ -685,7 +685,7 @@ class PSIntegratorBoundary(PSIntegrator):
                 len_s = len(weight_s)
                 len_e = len(weight_e)
                 for idx_s in range(len_s):
-                    idx_e = min(len_e - 1, self.max_depth - 1 - idx_s)
+                    idx_e = max(min(len_e - 1, self.max_depth - 2 - idx_s), 0)
                     block = film.create_block()
                     block.set_coalesce(False)
                     res = bseg_weight * weight_s[idx_s] * weight_e[idx_e] / spp
@@ -723,7 +723,7 @@ class PSIntegratorBoundary(PSIntegrator):
                 len_s = len(weight_s)
                 len_e = len(weight_e)
                 for idx_s in range(len_s):
-                    idx_e = min(len_e - 1, self.max_depth - 1 - idx_s)
+                    idx_e = max(min(len_e - 1, self.max_depth - 2 - idx_s), 0)
                     block = film.create_block()
                     block.set_coalesce(False)
                     res = bseg_weight * weight_s[idx_s] * weight_e[idx_e] / spp

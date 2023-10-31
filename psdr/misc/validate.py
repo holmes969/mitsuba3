@@ -7,7 +7,7 @@ import torch, cv2
 scene_dir = '../scenes/'
 scene_fn = 'cbox_bunny.xml'
 result_dir = '../results/'
-max_depth = 4
+max_depth = 5
 
 def save_image(fn, image):
     output = image.detach().cpu().numpy()

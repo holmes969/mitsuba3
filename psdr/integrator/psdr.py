@@ -6,6 +6,7 @@ import common
 from psdr_interior import PathSpaceInteriorIntegrator
 from psdr_primary import PathSpacePrimaryIntegrator
 from psdr_direct import PathSpaceDirectIntegrator
+from psdr_indirect import PathSpaceIndirectIntegrator
 
 
 import mitsuba as mi
@@ -16,6 +17,7 @@ class PathSpaceIntegrator(mi.CppADIntegrator):
         self.interior = PathSpaceInteriorIntegrator(props)
         self.primary = PathSpacePrimaryIntegrator(props)
         self.direct = PathSpaceDirectIntegrator(props)
+        self.indirect = PathSpaceIndirectIntegrator(props)
         self.spp_pixel = 0
         self.spp_primary = 0
         self.spp_direct = 0
@@ -50,7 +52,8 @@ class PathSpaceIntegrator(mi.CppADIntegrator):
         grad_interior = self.interior.render_forward(scene, params, sensor, seed, spp)
         grad_primary = self.primary.render_forward(scene, params, sensor, seed, self.spp_primary)
         grad_direct = self.direct.render_forward(scene, params, sensor, seed, self.spp_direct)
-        return grad_interior + grad_primary + grad_direct
+        grad_indirect = self.indirect.render_forward(scene, params, sensor, seed, self.spp_indirect)
+        return grad_interior + grad_primary + grad_direct + grad_indirect
 
     def render_backward(self: mi.SamplingIntegrator,
                         scene: mi.Scene,
@@ -62,6 +65,7 @@ class PathSpaceIntegrator(mi.CppADIntegrator):
         self.interior.render_backward(scene, params, grad_in, sensor, seed, spp)
         self.primary.render_backward(scene, params, grad_in, sensor, seed, self.spp_primary)
         self.direct.render_backward(scene, params, grad_in, sensor, seed, self.spp_direct)
+        self.indirect.render_backward(scene, params, grad_in, sensor, seed, self.spp_indirect)
     
 mi.register_integrator("psdr", lambda props: PathSpaceIntegrator(props))
 

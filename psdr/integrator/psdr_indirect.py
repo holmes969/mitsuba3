@@ -172,6 +172,7 @@ class PathSpaceIndirectIntegrator(common.PSIntegratorBoundary):
                 # Check if we still need to trace
                 if dr.none(active):
                     break
+
         return weights, cam_pos
 
     def sample_emitter_subpath(
@@ -182,7 +183,7 @@ class PathSpaceIndirectIntegrator(common.PSIntegratorBoundary):
         endpoint_e,
         active: mi.Bool
     ):
-        return [1.0]
+        # return [1.0]
         # per-bounce radiance
         weights = []
         # Standard BSDF evaluation context for path tracing
@@ -213,8 +214,8 @@ class PathSpaceIndirectIntegrator(common.PSIntegratorBoundary):
                     scene.pdf_emitter_direction(prev_si, ds, ~prev_bsdf_delta)
                 )
                 L += β * mis * ds.emitter.eval(si)
-
             weights.append(L)
+            L = mi.Spectrum(L)
             
             # ---------------------- Emitter sampling ----------------------
             # Should we continue tracing to reach one more vertex?
