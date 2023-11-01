@@ -24,14 +24,13 @@ struct EdgeSample
 
 enum class BoundaryFlags : uint32_t {
     /// Primary boundary
-    Pixel = 0x0,
+    Pixel = 0x1,
     /// Pixel boundary
-    Primary = 0x1,
+    Primary = 0x2,
     /// Direct boundary
-    Direct = 0x2,
+    Direct = 0x4,
     /// Indirect boundary
-    Indirect = 0x4,
-    
+    Indirect = 0x8,
 };
 MI_DECLARE_ENUM_OPERATORS(BoundaryFlags)
 

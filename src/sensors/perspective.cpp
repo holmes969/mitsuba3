@@ -317,6 +317,11 @@ public:
         return { ds, Spectrum(importance(local_d) * inv_dist * inv_dist) };
     }
 
+    void sample_pixel_boundary(Float sample1, EdgeSample<Float>& es) const override{
+        
+    }
+
+
     ScalarBoundingBox3f bbox() const override {
         ScalarPoint3f p = m_to_world.scalar() * ScalarPoint3f(0.f);
         return ScalarBoundingBox3f(p, p);

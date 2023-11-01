@@ -427,6 +427,8 @@ MI_VARIANT EdgeSample<Float> Scene<Float, Spectrum>::sample_edge_point(Float sam
     auto& em = m_edge_manager;
     if (has_flag(boundary_flags, BoundaryFlags::Pixel)) {
         // pixel boundary: sample on pixel boundary
+        const Sensor* sensor = m_sensors[cam_id].get();
+        sensor->sample_pixel_boundary(sample1, res);
     } else {
         // primary/direct/indirect boundary: sample on geometric edge
         bool is_pr = has_flag(boundary_flags, BoundaryFlags::Primary);

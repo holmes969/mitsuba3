@@ -25,6 +25,7 @@ def run_mitsuba(mode, spp):
     import psdr_primary
     import psdr_direct
     import psdr_indirect
+    import psdr_pixel
     import drjit as dr
 
     # select integrator based on mode
@@ -33,7 +34,8 @@ def run_mitsuba(mode, spp):
         "interior": "psdr_interior",
         "primary":  "psdr_primary",
         "direct":   "psdr_direct",
-        "indirect": "psdr_indirect"
+        "indirect": "psdr_indirect",
+        "pixel":    "psdr_pixel"
     }
     # load 3D scene from xml file
     sc_path = os.path.join(scene_dir, scene_fn)

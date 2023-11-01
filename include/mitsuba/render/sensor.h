@@ -11,6 +11,7 @@
 #include <mitsuba/render/records.h>
 #include <mitsuba/render/sampler.h>
 #include <mitsuba/render/texture.h>
+#include <mitsuba/render/edge.h>
 
 NAMESPACE_BEGIN(mitsuba)
 
@@ -86,6 +87,11 @@ public:
     std::pair<Wavelength, Spectrum>
     sample_wavelengths(const SurfaceInteraction3f &si, Float sample,
                        Mask active = true) const override;
+
+    virtual void sample_pixel_boundary(Float sample1, EdgeSample<Float>& es) const {
+        Throw("Not implemented for base sensor class.");
+    }
+    
 
     //! @}
     // =============================================================
