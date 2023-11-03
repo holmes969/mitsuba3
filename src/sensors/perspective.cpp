@@ -317,8 +317,91 @@ public:
         return { ds, Spectrum(importance(local_d) * inv_dist * inv_dist) };
     }
 
-    void sample_pixel_boundary(Float sample1, EdgeSample<Float>& es) const override{
-        
+    Float augment_antithetic_samples(Float sample, int num_antithetic) const {
+        assert (num_antithetic == 4);
+        if constexpr (dr::is_jit_v<Float>) {
+            size_t sz = sample.size();
+            assert(sz % 4 == 0);
+            UInt32 index = dr::arange<UInt32>(0, sz, 4);
+            Float _sample = dr::gather<Float>(sample, index);
+            Float sample_1 = dr::select(_sample < 0.5, _sample + 0.5, _sample - 0.5);
+            Float sample_2 = dr::select(_sample < 0.75, 0.75 - _sample, 1.75 - _sample);
+            Float sample_3 = dr::select(_sample < 0.25, 0.25 - _sample, 1.25 - _sample);
+            dr::scatter(sample, sample_1, index + 1);
+            dr::scatter(sample, sample_2, index + 2);
+            dr::scatter(sample, sample_3, index + 3);
+            return sample;
+        } else {
+            return sample;
+        }
+    }
+
+    void sample_pixel_boundary(Float sample1, EdgeSample<Float>& es) const override {
+        ScalarVector2u film_size = m_film->crop_size();
+        assert(!film->sample_border());
+        if constexpr (dr::is_jit_v<Float>) {
+            Float sample_antithetic = augment_antithetic_samples(sample1, 4);
+            size_t wavefront_size = sample_antithetic.size();
+            assert(wavefront_size <= 0xffffffffu);
+            size_t num_pixels = (size_t) film_size.x() * (size_t) film_size.y();
+            assert(wavefront_size % num_pixels == 0);
+            size_t spp = wavefront_size / num_pixels;
+            // Compute discrete sample position
+            UInt32 idx = dr::arange<UInt32>((uint32_t) wavefront_size);
+            // Try to avoid a division by an unknown constant if we can help it
+            uint32_t log_spp = dr::log2i(spp);
+            if ((1u << log_spp) == spp)
+                idx >>= dr::opaque<UInt32>(log_spp);
+            else
+                idx /= dr::opaque<UInt32>(spp);
+            // Compute the position on the image plane
+            Vector2u pos;
+            pos.y() = idx / film_size[0];
+            pos.x() = dr::fnmadd(film_size[0], pos.y(), idx);
+            pos += m_film->crop_offset();
+            sample_antithetic *= 4.0;
+            Int32 index_boundary = dr::floor(sample_antithetic);
+            auto left = dr::eq(index_boundary, 0);
+            auto top = dr::eq(index_boundary, 1);
+            auto right = dr::eq(index_boundary, 2);
+            auto bottom = dr::eq(index_boundary, 3);
+            Point2f pos_offset = dr::zeros<Point2f>(wavefront_size);
+            pos_offset.x()[top] = sample_antithetic - 1.0;
+            pos_offset.x()[right] = 1.0f;
+            pos_offset.x()[bottom] = 4.0 - sample_antithetic;
+            pos_offset.y()[left] = sample_antithetic;
+            pos_offset.y()[top] = 1.0f;
+            pos_offset.y()[right] = 3.0 - sample_antithetic;
+            Vector2f sample_pos = pos + pos_offset;
+            ScalarVector2f scale = 1.f / film_size,
+                           offset = -ScalarVector2f(m_film->crop_offset()) * scale;
+            Vector2f adjusted_pos = dr::fmadd(sample_pos, scale, offset);   // [0, 1]
+            Vector2f scaled_principal_point_offset = m_film->size() * m_principal_point_offset / film_size;
+            // Compute the sample position on the near plane (local camera space).
+            Point3f near_p = m_sample_to_camera *
+                            Point3f(adjusted_pos.x() + scaled_principal_point_offset.x(),
+                                    adjusted_pos.y() + scaled_principal_point_offset.y(),
+                                    0.f);
+            es.p = m_to_world.value() * near_p;
+
+            Vector3f e = dr::zeros<Vector3f>(wavefront_size);
+            e.x()[top || bottom] = 1.0;
+            e.y()[left || right] = 1.0;
+            es.e = dr::normalize(m_to_world.value() * m_sample_to_camera * e);
+
+            Vector3f e2 = dr::zeros<Vector3f>(wavefront_size);
+            e2.x()[left] = 1.0;
+            e2.x()[right] = -1.0;
+            e2.y()[top] = -1.0;
+            e2.x()[bottom] = 1.0;
+            es.e2 = dr::normalize(m_to_world.value() * m_sample_to_camera * e2);
+
+            Float cam_img_len_x = (m_image_rect.max.x() - m_image_rect.min.x()) * m_near_clip;
+            Float cam_img_len_y = (m_image_rect.max.y() - m_image_rect.min.y()) * m_near_clip;
+            es.pdf = dr::empty<Float>(wavefront_size);
+            es.pdf[left || right] = 0.25 / (cam_img_len_y * film_size[0]);
+            es.pdf[top || bottom] = 0.25 / (cam_img_len_x * film_size[1]);
+        }
     }
 
 

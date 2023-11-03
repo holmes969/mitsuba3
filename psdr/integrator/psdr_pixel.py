@@ -52,28 +52,26 @@ class PathSpacePixelIntegrator(common.PSIntegratorBoundary):
         # sample point on geometric edge
         edge_sample = scene.sample_edge_point(sampler.next_1d(), mi.BoundaryFlags.Pixel, sensor_id)
         sensor_pos = sensor.world_transform().translation()
-        tmp_si = dr.zeros(mi.Interaction3f)
-        tmp_si.p = edge_sample.p
         dir = dr.normalize(edge_sample.p - sensor_pos)
 
-        # sensor-side end point of the boundary segment (fixed at camera position for primary boundary)
+        # np.savetxt("sampleP.xyz", edge_sample.p.numpy(), delimiter=" ", fmt="%.6f")
+
+
+        # sensor-side end point of the boundary segment (fixed at camera position for pixel boundary)
         endpoint_s = dr.zeros(mi.Interaction3f)
         endpoint_s.p = sensor_pos
-        tmp_si.n = -dir
-        sensor_ray = tmp_si.spawn_ray_to(endpoint_s.p)
-        visible = ~scene.ray_test(sensor_ray)
-        endpoint_s.t = dr.select(visible, 0.0, dr.inf)
+        endpoint_s.t = 0.0
 
         # emitter-side end point of the boundary segment
-        tmp_si.n = dir
-        tmp_ray = tmp_si.spawn_ray(dir)
-        pi = scene.ray_intersect_preliminary(tmp_ray, coherent=False)
-        tmp_ray.o = endpoint_s.p
-        tmp_ray.d = dr.normalize(edge_sample.p - tmp_ray.o)
-        endpoint_e = pi.compute_surface_interaction(tmp_ray, mi.RayFlags.PathSpace | mi.RayFlags.All)
+        primary_ray = mi.Ray3f(sensor_pos, dir)
+        pi = scene.ray_intersect_preliminary(primary_ray, coherent=False)
+        endpoint_e = pi.compute_surface_interaction(primary_ray, mi.RayFlags.PathSpace | mi.RayFlags.All)
 
         # evaluate the boundary segment
         weight, active = self.eval_boundary_segment(edge_sample, endpoint_s, endpoint_e)
+        index = dr.compress(active)
+        # np.savetxt("sampleP.xyz", dr.gather(mi.Point3f, edge_sample.p, index).numpy(), delimiter=" ", fmt="%.6f")
+
         return edge_sample, endpoint_s, endpoint_e, weight, active
 
     def sample_sensor_subpath(
@@ -97,6 +95,17 @@ class PathSpacePixelIntegrator(common.PSIntegratorBoundary):
         active &= dr.neq(ds.pdf, 0.0)
         weight = (cam_imp * dist2_a / dist2_b) & active
         return [weight], [pos]
+    
+    def to_antithetic(self, rnd, num_antithetic = 4):
+        sz = dr.shape(rnd)[-1]
+        assert(sz % 4 == 0)
+        index = dr.arange(mi.UInt32, 0, sz, 4)
+        _rnd = dr.gather(type(rnd), rnd, index)
+        dr.scatter(rnd, _rnd, index + 1)
+        dr.scatter(rnd, _rnd, index + 2)
+        dr.scatter(rnd, _rnd, index + 3)
+        dr.eval(rnd)    # without eval: get error "inputs remain dirty after evaluation"
+        return rnd
 
     def sample_emitter_subpath(
         self,
@@ -124,47 +133,40 @@ class PathSpacePixelIntegrator(common.PSIntegratorBoundary):
         prev_bsdf_pdf   = mi.Float(1.0)
         prev_bsdf_delta = mi.Bool(True)
 
-        # Record the following loop in its entirety
-        loop = mi.Loop(name="Trace emitter subpath for primary boundary",
-                       state=lambda: (sampler, ray, depth, L, β, active, si,
-                                      prev_si, prev_bsdf_pdf, prev_bsdf_delta))
-        loop.set_max_iterations(self.max_depth)
-        while loop(active):
-            # Get the BSDF, potentially computes texture-space differentials
-            bsdf = si.bsdf(ray)
-            
-            # ---------------------- Direct emission ----------------------
+        # CZ: Will drjit.loop (with drjit.scatter_reduce) a better implementation?
+        for scalar_depth in range(self.max_depth):
             # Compute MIS weight for emitter sample from previous bounce
             ds = mi.DirectionSample3f(scene, si=si, ref=prev_si)
             mis = common.mis_weight(
                 prev_bsdf_pdf,
                 scene.pdf_emitter_direction(prev_si, ds, ~prev_bsdf_delta)
             )
-            Le = β * mis * ds.emitter.eval(si)
+            L += β * mis * ds.emitter.eval(si)
             
             # ---------------------- Emitter sampling ----------------------
+            bsdf = si.bsdf(ray)
             # Should we continue tracing to reach one more vertex?
-            active_next = (depth + 1 < self.max_depth) & si.is_valid()
+            active &= scalar_depth + 1 < self.max_depth
             # Is emitter sampling even possible on the current vertex?
-            active_em = active_next & mi.has_flag(bsdf.flags(), mi.BSDFFlags.Smooth)
+            active_em = active & mi.has_flag(bsdf.flags(), mi.BSDFFlags.Smooth)
             # If so, randomly sample an emitter without derivative tracking.
+            # print("rnd_antithetic = ", rnd_antithetic)
             ds, em_weight = scene.sample_emitter_direction(
-                si, sampler.next_2d(), True, active_em)
+                si, self.to_antithetic(sampler.next_2d()), True, active_em)
             active_em &= dr.neq(ds.pdf, 0.0)
             # Evaluate BSDF * cos(theta)
             wo = si.to_local(ds.d)
             bsdf_value_em, bsdf_pdf_em = bsdf.eval_pdf(bsdf_ctx, si, wo, active_em)
             mis_em = dr.select(ds.delta, 1, common.mis_weight(ds.pdf, bsdf_pdf_em))
-            Lr_dir = β * mis_em * bsdf_value_em * em_weight
+            L += β * mis_em * bsdf_value_em * em_weight
 
             # ------------------ Detached BSDF sampling -------------------
             bsdf_sample, bsdf_weight = bsdf.sample(bsdf_ctx, si,
-                                                   sampler.next_1d(),
-                                                   sampler.next_2d(),
-                                                   active_next)
+                                                   self.to_antithetic(sampler.next_1d()),
+                                                   self.to_antithetic(sampler.next_2d()),
+                                                   active)
             
             # ---- Update loop variables based on current interaction -----
-            L = L + Le + Lr_dir
             ray = si.spawn_ray(si.to_world(bsdf_sample.wo))
             β *= bsdf_weight
 
@@ -175,12 +177,12 @@ class PathSpacePixelIntegrator(common.PSIntegratorBoundary):
 
             # -------------------- Stopping criterion ---------------------
             # Don't run another iteration if the throughput has reached zero
-            β_max = dr.max(β)
-            active_next &= dr.neq(β_max, 0)
+            si = scene.ray_intersect(ray, ray_flags=mi.RayFlags.All, coherent=mi.Bool(False), active=active)
+            active &= si.is_valid() & dr.neq(dr.max(β), 0)
 
-            depth[si.is_valid()] += 1
-            active = active_next
-            si = scene.ray_intersect(ray, ray_flags=mi.RayFlags.All, coherent=dr.eq(depth, 0), active=active)
+            # Check if we still need to trace
+            if dr.none(active):
+                break
 
         return [L]
 
