@@ -393,7 +393,7 @@ public:
             e2.x()[left] = 1.0;
             e2.x()[right] = -1.0;
             e2.y()[top] = -1.0;
-            e2.x()[bottom] = 1.0;
+            e2.y()[bottom] = 1.0;
             es.e2 = dr::normalize(m_to_world.value() * m_sample_to_camera * e2);
 
             Float cam_img_len_x = (m_image_rect.max.x() - m_image_rect.min.x()) * m_near_clip;

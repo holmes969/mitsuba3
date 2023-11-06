@@ -10,6 +10,7 @@
 
 	<sensor type="perspective">
 		<float name="fov" value="14"/>
+		<float name='near_clip' value='1.0'/>
 		<transform name="toWorld">
 			<lookat target="0, 124.965, 999.001" origin="0, 125, 1000" up="0, 0.999388, -0.0349786"/>
 		</transform>
@@ -66,8 +67,8 @@
 		<ref id="white"/>
 		<boolean name='faceNormals' value='false'/>
 	</shape> -->
-<!-- 
-	<shape type="obj" id='bunny_shape'>
+
+	<!-- <shape type="obj" id='bunny_shape'>
 		<string name="filename" value="meshes/sphere_flat.obj"/>
 		<transform name="toWorld">
 			<scale x="50.0" y="50.0" z="50.0"/>

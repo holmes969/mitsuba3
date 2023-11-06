@@ -32,7 +32,7 @@ class PathSpacePixelIntegrator(common.PSIntegratorBoundary):
             sign0 = dr.dot(e, edge_sample.e2) > 0.0
             sign1 = dr.dot(e, n) > 0.0
             active &= (sinphi > mi.math.EdgeEpsilon) & (sinphi2 > mi.math.EdgeEpsilon)
-            baseVal = (dist / dist1) * (sinphi / sinphi2) * cos2 * dr.select(dr.eq(sign0, sign1), 1.0, -1.0)
+            baseVal = (dist / dist1) * (sinphi / sinphi2) * cos2 * dr.select(dr.neq(sign0, sign1), 1.0, -1.0)
         # differential component
         x_dot_n = dr.dot(n, si_1.p)
         return baseVal * x_dot_n / edge_sample.pdf, active
@@ -54,9 +54,6 @@ class PathSpacePixelIntegrator(common.PSIntegratorBoundary):
         sensor_pos = sensor.world_transform().translation()
         dir = dr.normalize(edge_sample.p - sensor_pos)
 
-        # np.savetxt("sampleP.xyz", edge_sample.p.numpy(), delimiter=" ", fmt="%.6f")
-
-
         # sensor-side end point of the boundary segment (fixed at camera position for pixel boundary)
         endpoint_s = dr.zeros(mi.Interaction3f)
         endpoint_s.p = sensor_pos
@@ -69,8 +66,6 @@ class PathSpacePixelIntegrator(common.PSIntegratorBoundary):
 
         # evaluate the boundary segment
         weight, active = self.eval_boundary_segment(edge_sample, endpoint_s, endpoint_e)
-        index = dr.compress(active)
-        # np.savetxt("sampleP.xyz", dr.gather(mi.Point3f, edge_sample.p, index).numpy(), delimiter=" ", fmt="%.6f")
 
         return edge_sample, endpoint_s, endpoint_e, weight, active
 
@@ -85,15 +80,16 @@ class PathSpacePixelIntegrator(common.PSIntegratorBoundary):
         active: mi.Bool
     ):
         active = mi.Bool(active) 
-        tmp_si = dr.zeros(mi.Interaction3f)
-        tmp_si.p = edge_sample.p
-        ds, cam_imp = sensor.sample_direction(tmp_si, mi.Point2f(), active)
+        _, weight = sensor.sample_direction(endpoint_e, mi.Point2f(), active)
         film = sensor.film()
-        pos = ds.uv + film.crop_offset()
-        dist2_a = dr.squared_norm(tmp_si.p - endpoint_s.p)
-        dist2_b = dr.squared_norm(endpoint_e.p - endpoint_s.p)
-        active &= dr.neq(ds.pdf, 0.0)
-        weight = (cam_imp * dist2_a / dist2_b) & active
+        film_size = film.size()
+        wavefront_size = sampler.wavefront_size()
+        idx = dr.arange(mi.UInt32, wavefront_size)
+        spp = wavefront_size // dr.prod(film.size())
+        idx = idx // spp
+        pos_y = idx // film_size[0]
+        pos_x = dr.fma(-film_size[0], pos_y, idx)
+        pos = mi.Vector2f(pos_x + 0.5, pos_y + 0.5)
         return [weight], [pos]
     
     def to_antithetic(self, rnd, num_antithetic = 4):

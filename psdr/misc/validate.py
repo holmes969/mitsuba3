@@ -7,7 +7,7 @@ import torch, cv2
 scene_dir = '../scenes/'
 scene_fn = 'cbox_bunny.xml'
 result_dir = '../results/'
-max_depth = 5
+max_depth = 3
 
 def save_image(fn, image):
     output = image.detach().cpu().numpy()
@@ -26,6 +26,7 @@ def run_mitsuba(mode, spp):
     import psdr_direct
     import psdr_indirect
     import psdr_pixel
+    import psdr
     import drjit as dr
 
     # select integrator based on mode
@@ -35,7 +36,8 @@ def run_mitsuba(mode, spp):
         "primary":  "psdr_primary",
         "direct":   "psdr_direct",
         "indirect": "psdr_indirect",
-        "pixel":    "psdr_pixel"
+        "pixel":    "psdr_pixel",
+        "all":      "psdr",
     }
     # load 3D scene from xml file
     sc_path = os.path.join(scene_dir, scene_fn)
@@ -50,13 +52,18 @@ def run_mitsuba(mode, spp):
     params[key] = dr.ravel(trafo @ initial_vertex_positions)
     params.update()
     # Note: call build_geometric_edges() after params.update (maybe can fix this later?)
-    if mode in ['primary', 'direct', 'indirect']:
+    if mode in ['primary', 'direct', 'indirect', "all"]:
         sc.build_geometric_edges()
     # start rendering under different modes
     if mode == "forward":
         with dr.suspend_grad():
             image = sc.integrator().render(sc, spp = spp).torch()
     else:
+        if mode == 'all':
+            sc.integrator().set_boundary_spp(spp_pixel = spp,
+                                             spp_primary = spp,
+                                             spp_direct = spp,
+                                             spp_indirect = spp)
         dr.forward(dr_var, dr.ADFlag.ClearEdges)
         image = sc.integrator().render_forward(sc, params, spp = spp).torch()
     save_image(f'mi_{mode}.exr', image)

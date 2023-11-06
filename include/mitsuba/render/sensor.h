@@ -88,7 +88,7 @@ public:
     sample_wavelengths(const SurfaceInteraction3f &si, Float sample,
                        Mask active = true) const override;
 
-    virtual void sample_pixel_boundary(Float sample1, EdgeSample<Float>& es) const {
+    virtual void sample_pixel_boundary(Float, EdgeSample<Float>&) const {
         Throw("Not implemented for base sensor class.");
     }
     

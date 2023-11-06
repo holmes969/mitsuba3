@@ -700,6 +700,7 @@ class PSIntegratorBoundary(PSIntegrator):
                     film.put_block(block)
                 result_img = film.develop()
                 dr.forward_to(result_img)
+        # return result_img
         return dr.grad(result_img)
     
     def render_backward(self: mi.SamplingIntegrator,
