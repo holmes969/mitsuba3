@@ -699,7 +699,7 @@ class PSIntegratorBoundary(PSIntegrator):
                     )
                     film.put_block(block)
                 result_img = film.develop()
-                dr.forward_to(result_img)
+                dr.forward_to(result_img, flags=dr.ADFlag.ClearInterior | dr.ADFlag.ClearEdges)
         # return result_img
         return dr.grad(result_img)
     
